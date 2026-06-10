@@ -443,6 +443,11 @@ export default function SessionScreen() {
                     </Text>
                   ) : null}
                   <Text
+                    // single long words (German compounds) scale to fit
+                    // rather than breaking mid-word; phrases wrap on spaces
+                    numberOfLines={card.base.includes(' ') ? undefined : 1}
+                    adjustsFontSizeToFit={!card.base.includes(' ')}
+                    minimumFontScale={0.55}
                     style={[
                       font('serif', 600),
                       {

@@ -215,6 +215,9 @@ export default function HomeScreen() {
                   <LevelBadge level={first.level} />
                 </View>
                 <Text
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
                   style={[
                     font('serif', 600),
                     {
