@@ -1,0 +1,8 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Maranki app mark">
+  
+  <rect width="120" height="120" rx="28" fill="#136F63"></rect>
+  <rect x="0.5" y="0.5" width="119" height="119" rx="27.5" fill="none" stroke="#0E574E" stroke-width="1"></rect>
+  <text x="60" y="84" text-anchor="middle" font-family="Newsreader, Georgia, serif" font-size="74" font-weight="600" fill="#FBF8F2">M</text>
+  <circle cx="91" cy="34" r="9" fill="#DD8A2B"></circle>
+  <circle cx="91" cy="34" r="3.6" fill="#F2B741"></circle>
+</svg>

@@ -1,0 +1,38 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="../ion-inline.js"></script>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0}
+  body{background:var(--paper);font-family:var(--font-sans);color:var(--ink);padding:20px 24px;display:flex;flex-direction:column;gap:10px;}
+  .deck{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-md);box-shadow:var(--shadow-sm);padding:14px 16px;}
+  .flag{width:42px;height:42px;border-radius:var(--r-sm);background:var(--pine-tint);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+  .mid{flex:1;}
+  .nm{font-size:16px;font-weight:700;}
+  .meta{font-size:12.5px;color:var(--ink-3);margin-top:2px;}
+  .due{display:inline-flex;align-items:center;gap:5px;background:var(--state-due-tint);color:var(--state-due);font-size:12px;font-weight:700;padding:5px 11px;border-radius:var(--r-pill);}
+  .bar{height:6px;background:var(--paper-sunk);border-radius:var(--r-pill);margin-top:9px;overflow:hidden;}
+  .fill{height:100%;background:var(--pine);border-radius:var(--r-pill);}
+  ion-icon{font-size:14px;}
+  .chev{color:var(--ink-3);font-size:20px;}
+</style></head><body>
+  <div class="deck">
+    <div class="flag">🇩🇪</div>
+    <div class="mid">
+      <div class="nm">German — Everyday A1</div>
+      <div class="meta">240 cards · 68% mastered</div>
+      <div class="bar"><div class="fill" style="width:68%"></div></div>
+    </div>
+    <span class="due"><ion-icon name="alert-circle"></ion-icon>18 due</span>
+    <ion-icon class="chev" name="chevron-forward"></ion-icon>
+  </div>
+  <div class="deck">
+    <div class="flag" style="background:var(--amber-tint)">🇪🇸</div>
+    <div class="mid">
+      <div class="nm">Spanish — Travel B1</div>
+      <div class="meta">180 cards · 41% mastered</div>
+      <div class="bar"><div class="fill" style="width:41%;background:var(--amber)"></div></div>
+    </div>
+    <ion-icon class="chev" name="chevron-forward"></ion-icon>
+  </div>
+</body></html>

@@ -1,0 +1,28 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="../ion-inline.js"></script>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0}
+  body{background:var(--paper);font-family:var(--font-sans);color:var(--ink);padding:22px 24px;display:flex;flex-direction:column;gap:14px;}
+  .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:var(--r-pill);font-size:13px;font-weight:600;border:1px solid var(--hairline-strong);background:var(--card);color:var(--ink-2);}
+  .chip.on{background:var(--pine);color:#fff;border-color:var(--pine);}
+  .lvl{font-weight:800;font-size:12px;padding:4px 9px;border-radius:var(--r-pill);}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:var(--r-pill);font-size:12px;font-weight:700;}
+  ion-icon{font-size:15px;}
+</style></head><body>
+  <div class="row">
+    <span class="chip on"><ion-icon name="albums"></ion-icon>All cards</span>
+    <span class="chip"><ion-icon name="time-outline"></ion-icon>Due</span>
+    <span class="chip"><ion-icon name="heart-outline"></ion-icon>Favorites</span>
+    <span class="chip"><ion-icon name="filter"></ion-icon>Filters</span>
+  </div>
+  <div class="row">
+    <span class="lvl" style="background:var(--cefr-a1-tint);color:var(--cefr-a1)">A1</span>
+    <span class="lvl" style="background:var(--cefr-b1-tint);color:var(--cefr-b1)">B1</span>
+    <span class="lvl" style="background:var(--cefr-c2-tint);color:var(--cefr-c2)">C2</span>
+    <span class="badge" style="background:var(--state-due-tint);color:var(--state-due)"><ion-icon name="alert-circle"></ion-icon>18 due</span>
+    <span class="badge" style="background:var(--state-mastered-tint);color:var(--state-mastered)"><ion-icon name="checkmark-circle"></ion-icon>Mastered</span>
+  </div>
+</body></html>

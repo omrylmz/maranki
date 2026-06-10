@@ -1,0 +1,357 @@
+/* ============================================================================
+   MARANKI DESIGN SYSTEM — Foundations
+   colors_and_type.css
+
+   A warm "paper & ink" editorial system for a spaced-repetition vocabulary app.
+   This is a GROUND-UP REDESIGN: the original React Native app shipped a dark,
+   neon purple→pink glassmorphic look with platform-default fonts. The redesign
+   brief explicitly hands the visual layer over to be reinvented, so this system
+   replaces that aesthetic entirely.
+
+   Direction: words are the hero. Paper-warm neutrals, espresso ink, a calm
+   deep-pine brand for "focus / growth", a honey-amber reward color for the
+   habit loop (streaks / XP), and an editorial serif (for vocabulary words &
+   display) paired with a friendly grotesque (for UI & body).
+
+   Load order in an HTML file:
+     <link rel="stylesheet" href="colors_and_type.css">
+   Fonts are Google Fonts (Newsreader + Hanken Grotesk + Spline Sans Mono),
+   loaded via the @import below. See README "VISUAL FOUNDATIONS" for rationale
+   and a note on swapping in self-hosted woff2 if offline use is required.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500;1,6..72,600&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ------------------------------------------------------------------ */
+  /* TYPEFACES                                                           */
+  /* ------------------------------------------------------------------ */
+  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;   /* words, display, examples */
+  --font-sans: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; /* UI + body */
+  --font-mono: 'Spline Sans Mono', 'SFMono-Regular', ui-monospace, monospace; /* IPA, intervals, codes */
+
+  /* ==================================================================== */
+  /* COLOR — NEUTRALS (warm paper & ink)                                  */
+  /* ==================================================================== */
+  --paper:        #F4F0E7;  /* app background — warm parchment */
+  --paper-sunk:   #ECE6D9;  /* recessed wells, track backgrounds */
+  --surface:      #FBF8F2;  /* secondary / elevated panels */
+  --card:         #FFFFFF;  /* cards, sheets, the flashcard face */
+  --card-hover:   #FCFAF4;  /* card hover/press tint */
+
+  --ink:          #211E1A;  /* primary text — warm near-black */
+  --ink-2:        #5B554B;  /* secondary text, labels */
+  --ink-3:        #8B8478;  /* muted text, hints, placeholders */
+  --ink-on-color: #FBF8F2;  /* text on saturated fills */
+
+  --hairline:        #E4DDCD;  /* default borders, dividers */
+  --hairline-strong: #D6CCB6;  /* emphasized borders */
+  --hairline-soft:   #EFEADF;  /* faint inner dividers */
+
+  /* Cross-theme semantic surfaces (flip in evening mode) */
+  --page-bg:        #E7E0D2;  /* the area behind the device / off-canvas */
+  --tabbar-bg:      rgba(251, 248, 242, 0.92);  /* translucent tab bar */
+  --inverse-surface: #211E1A;  /* snackbars, tooltips — opposite of the page */
+  --inverse-text:    #FBF8F2;
+  --inverse-accent:  #F2B741;  /* action text on inverse surface (honey on dark) */
+  --scrim:          rgba(33, 30, 26, 0.45);  /* modal / sheet backdrop */
+  --grain-opacity:  0.035;  /* @kind other */ /* paper texture strength */
+
+  /* ==================================================================== */
+  /* COLOR — BRAND                                                        */
+  /* ==================================================================== */
+  --pine:        #136F63;  /* PRIMARY brand — focus, growth, study */
+  --pine-deep:   #0E574E;  /* hover / pressed */
+  --pine-bright: #1C8A7B;  /* on dark, accents */
+  --pine-tint:   #E2EDE9;  /* soft fill / selected bg */
+  --pine-tint-2: #D2E4DF;  /* stronger soft fill */
+
+  --amber:       #DD8A2B;  /* SECONDARY — streaks, XP, reward, highlight */
+  --amber-deep:  #BE7019;  /* hover / pressed */
+  --amber-tint:  #FAECD6;  /* soft fill */
+  --honey:       #F2B741;  /* bright accent for celebration / flame core */
+
+  /* ==================================================================== */
+  /* COLOR — FEEDBACK (semantic)                                          */
+  /* ==================================================================== */
+  --success:     #2E8B6F;  --success-tint: #DFEFE8;
+  --warning:     #C77E22;  --warning-tint: #F8EBD4;
+  --danger:      #BF4536;  --danger-tint:  #F6E1DC;
+  --info:        #2D77B0;  --info-tint:    #DEEAF3;
+
+  /* ==================================================================== */
+  /* COLOR — SRS RATING BUTTONS (the 4-button recall scale)               */
+  /* Again = forgot · Hard · Good · Easy = trivial                        */
+  /* ==================================================================== */
+  --rate-again: #BF4536;  --rate-again-tint: #F6E1DC;  /* warm red */
+  --rate-hard:  #C77E22;  --rate-hard-tint:  #F8EBD4;  /* amber */
+  --rate-good:  #2E8B6F;  --rate-good-tint:  #DFEFE8;  /* pine green */
+  --rate-easy:  #2D77B0;  --rate-easy-tint:  #DEEAF3;  /* effortless blue */
+
+  /* ==================================================================== */
+  /* COLOR — CARD LIFECYCLE STATES                                        */
+  /* new → learning → review (graduated) → mastered; "due" = needs review */
+  /* ==================================================================== */
+  --state-new:      #2D77B0;  --state-new-tint:      #DEEAF3;  /* blue — fresh */
+  --state-learning: #DD8A2B;  --state-learning-tint: #FAECD6;  /* amber — in progress */
+  --state-review:   #6A6CC0;  --state-review-tint:   #E6E5F4;  /* indigo — scheduled */
+  --state-mastered: #136F63;  --state-mastered-tint: #E2EDE9;  /* pine — achieved */
+  --state-due:      #BF4536;  --state-due-tint:      #F6E1DC;  /* red — needs attention */
+
+  /* ==================================================================== */
+  /* COLOR — CEFR LEVELS (A1 easiest → C2 hardest)                        */
+  /* A harmonious spectrum: green → teal → blue → indigo → amber → rust   */
+  /* ==================================================================== */
+  --cefr-a1: #4A9D7F;  --cefr-a1-tint: #E2EFE9;
+  --cefr-a2: #2D9AA6;  --cefr-a2-tint: #DCEFF1;
+  --cefr-b1: #2D77B0;  --cefr-b1-tint: #DEEAF3;
+  --cefr-b2: #6A6CC0;  --cefr-b2-tint: #E6E5F4;
+  --cefr-c1: #B5682A;  --cefr-c1-tint: #F4E6D5;
+  --cefr-c2: #A8432F;  --cefr-c2-tint: #F2DFDA;
+
+  /* ==================================================================== */
+  /* RADIUS                                                               */
+  /* ==================================================================== */
+  --r-xs:   6px;
+  --r-sm:   10px;
+  --r-md:   14px;   /* default card radius */
+  --r-lg:   20px;   /* large panels, modals */
+  --r-xl:   28px;   /* sheets, the flashcard */
+  --r-pill: 999px;
+
+  /* ==================================================================== */
+  /* SPACING  (4px base scale)                                            */
+  /* ==================================================================== */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* ==================================================================== */
+  /* ELEVATION — soft, warm, low-contrast (paper-like, never harsh)       */
+  /* ==================================================================== */
+  --shadow-xs: 0 1px 2px rgba(50, 40, 25, 0.06);
+  --shadow-sm: 0 1px 3px rgba(50, 40, 25, 0.08), 0 1px 2px rgba(50, 40, 25, 0.04);
+  --shadow-md: 0 4px 12px rgba(50, 40, 25, 0.08), 0 2px 4px rgba(50, 40, 25, 0.05);
+  --shadow-lg: 0 12px 28px rgba(50, 40, 25, 0.12), 0 4px 8px rgba(50, 40, 25, 0.06);
+  --shadow-xl: 0 24px 56px rgba(50, 40, 25, 0.16), 0 8px 16px rgba(50, 40, 25, 0.08);
+  /* the flashcard's signature lift */
+  --shadow-card: 0 2px 4px rgba(50, 40, 25, 0.05), 0 10px 24px rgba(50, 40, 25, 0.10);
+
+  /* ==================================================================== */
+  /* MOTION                                                               */
+  /* ==================================================================== */
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);     /* @kind other */ /* enter / standard */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);     /* @kind other */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);  /* @kind other */ /* playful overshoot (reward, flip) */
+  --dur-fast:   140ms;  /* @kind other */
+  --dur-normal: 240ms;  /* @kind other */
+  --dur-slow:   400ms;  /* @kind other */
+
+  /* ==================================================================== */
+  /* TYPE SCALE  (modular, ratio 1.25 — preserved from the original)      */
+  /* Mobile-first; sizes in px.                                           */
+  /* ==================================================================== */
+  --fs-caption: 11px;  /* fine print, overlines */
+  --fs-small:   13px;  /* labels, secondary */
+  --fs-body:    16px;  /* body base */
+  --fs-lead:    20px;  /* lead / large body */
+  --fs-h4:      24px;
+  --fs-h3:      30px;
+  --fs-h2:      38px;
+  --fs-h1:      48px;
+  --fs-display: 60px;  /* hero numbers, the studied word */
+
+  --lh-tight:   1.15;  /* @kind font */
+  --lh-snug:    1.3;   /* @kind font */
+  --lh-normal:  1.5;   /* @kind font */
+  --lh-relaxed: 1.7;   /* @kind font */
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide:  0.08em;   /* overlines / eyebrows */
+}
+
+/* ============================================================================
+   EVENING MODE — a warm dark theme.
+   Not a neon flip of the old app: espresso-paper surfaces (never pure black),
+   with pine + amber kept luminous so the brand still glows at night. Every
+   semantic role keeps its meaning so a "mastered" card reads the same after dark.
+   Activate by setting  data-theme="dark"  on a wrapping element (or <html>).
+   ========================================================================== */
+[data-theme="dark"] {
+  /* neutrals — warm espresso, stepped up by elevation */
+  --paper:        #1C1916;
+  --paper-sunk:   #151310;
+  --surface:      #232019;
+  --card:         #2A251E;
+  --card-hover:   #322C24;
+
+  --ink:          #F1EADD;  /* warm off-white */
+  --ink-2:        #C2B9A7;
+  --ink-3:        #8E8676;
+  --ink-on-color: #FBF8F2;
+
+  --hairline:        #38322A;
+  --hairline-strong: #4A4338;
+  --hairline-soft:   #2F2A22;
+
+  --page-bg:        #100E0B;
+  --tabbar-bg:      rgba(35, 32, 25, 0.9);
+  --inverse-surface: #F1EADD;  /* light snackbar on dark UI */
+  --inverse-text:    #211E1A;
+  --inverse-accent:  #146A5E;  /* pine, readable on the light inverse surface */
+  --scrim:          rgba(0, 0, 0, 0.6);
+  --grain-opacity:  0.05;  /* @kind other */
+
+  /* brand — brightened for legibility on dark; tints become deep washes */
+  --pine:        #2BA391;
+  --pine-deep:   #1C8A7B;
+  --pine-bright: #46BEAA;
+  --pine-tint:   #16332D;
+  --pine-tint-2: #1D423A;
+
+  --amber:       #E89A3C;
+  --amber-deep:  #CF8226;
+  --amber-tint:  #3A2C16;
+  --honey:       #F2B741;
+
+  --success:     #46B093;  --success-tint: #17322A;
+  --warning:     #DC9A4C;  --warning-tint: #372A16;
+  --danger:      #D9614E;  --danger-tint:  #3A211C;
+  --info:        #4F95C9;  --info-tint:    #15293A;
+
+  --rate-again: #D9614E;  --rate-again-tint: #3A211C;
+  --rate-hard:  #DC9A4C;  --rate-hard-tint:  #372A16;
+  --rate-good:  #46B093;  --rate-good-tint:  #17322A;
+  --rate-easy:  #4F95C9;  --rate-easy-tint:  #15293A;
+
+  --state-new:      #4F95C9;  --state-new-tint:      #15293A;
+  --state-learning: #E89A3C;  --state-learning-tint: #3A2C16;
+  --state-review:   #8A8CD6;  --state-review-tint:   #232148;
+  --state-mastered: #2BA391;  --state-mastered-tint: #16332D;
+  --state-due:      #D9614E;  --state-due-tint:      #3A211C;
+
+  --cefr-a1: #5FB496;  --cefr-a1-tint: #163029;
+  --cefr-a2: #46B0BC;  --cefr-a2-tint: #14302F;
+  --cefr-b1: #4F95C9;  --cefr-b1-tint: #15293A;
+  --cefr-b2: #8A8CD6;  --cefr-b2-tint: #232148;
+  --cefr-c1: #D08A4C;  --cefr-c1-tint: #372715;
+  --cefr-c2: #D26B53;  --cefr-c2-tint: #3A201B;
+
+  /* elevation — neutral dark shadows (warm-brown shadows vanish on dark paper) */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 24px 56px rgba(0, 0, 0, 0.6), 0 8px 16px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Paper-grain utility — a faint tactile noise on large flat surfaces.
+   Decorative only; never place over text-bearing cards. */
+.paper-grain {
+  position: relative;
+}
+.paper-grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ============================================================================
+   SEMANTIC TYPOGRAPHY CLASSES
+   Use these directly, or copy their declarations into component styles.
+   ========================================================================== */
+
+.m-display {
+  font-family: var(--font-serif);
+  font-size: var(--fs-display);
+  line-height: var(--lh-tight);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+}
+
+/* The studied vocabulary word — the single most important type moment. */
+.m-word {
+  font-family: var(--font-serif);
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+}
+
+.m-h1 { font-family: var(--font-serif); font-size: var(--fs-h1); line-height: var(--lh-tight); font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--ink); }
+.m-h2 { font-family: var(--font-serif); font-size: var(--fs-h2); line-height: var(--lh-tight); font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--ink); }
+.m-h3 { font-family: var(--font-sans);  font-size: var(--fs-h3); line-height: var(--lh-snug);  font-weight: 700; letter-spacing: var(--tracking-tight); color: var(--ink); }
+.m-h4 { font-family: var(--font-sans);  font-size: var(--fs-h4); line-height: var(--lh-snug);  font-weight: 700; color: var(--ink); }
+
+.m-title    { font-family: var(--font-sans); font-size: var(--fs-lead); line-height: var(--lh-snug); font-weight: 700; color: var(--ink); }
+.m-subtitle { font-family: var(--font-sans); font-size: var(--fs-lead); line-height: var(--lh-normal); font-weight: 500; color: var(--ink-2); }
+
+.m-body       { font-family: var(--font-sans); font-size: var(--fs-body); line-height: var(--lh-normal); font-weight: 400; color: var(--ink); }
+.m-body-small { font-family: var(--font-sans); font-size: var(--fs-small); line-height: var(--lh-normal); font-weight: 400; color: var(--ink-2); }
+
+/* Example sentences appear in serif italic — they read as "quoted language". */
+.m-example {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: var(--fs-lead);
+  line-height: var(--lh-normal);
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.m-label {
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  line-height: var(--lh-normal);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* Eyebrow / section overline — uppercase, tracked, small. */
+.m-overline {
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.m-caption { font-family: var(--font-sans); font-size: var(--fs-caption); line-height: var(--lh-normal); font-weight: 500; color: var(--ink-3); }
+
+/* IPA pronunciation, intervals (1d / 10m / 2mo), and other tokens. */
+.m-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  line-height: var(--lh-normal);
+  font-weight: 500;
+  font-feature-settings: 'tnum' 1;
+  color: var(--ink-2);
+}
+
+/* Big numerals (streak count, mastery %, XP) use tabular sans figures. */
+.m-stat {
+  font-family: var(--font-sans);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-tight);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  font-feature-settings: 'tnum' 1;
+  color: var(--ink);
+}

@@ -1,0 +1,20 @@
+<!-- @dsCard group="Colors" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0}
+  body{background:var(--paper);font-family:var(--font-sans);color:var(--ink);padding:22px 24px;}
+  .row{display:flex;gap:12px;}
+  .btn{flex:1;border-radius:var(--r-md);padding:14px 12px;color:#fff;display:flex;flex-direction:column;gap:3px;align-items:center;box-shadow:var(--shadow-sm);}
+  .v{font-size:15px;font-weight:800;}
+  .i{font-size:11px;font-family:var(--font-mono);opacity:.85;}
+  .cap{font-size:11px;color:var(--ink-3);margin-bottom:12px;font-weight:600;}
+</style></head><body>
+  <div class="cap">Recall rating scale — each button previews the next interval</div>
+  <div class="row">
+    <div class="btn" style="background:var(--rate-again)"><span class="v">Again</span><span class="i">soon</span></div>
+    <div class="btn" style="background:var(--rate-hard)"><span class="v">Hard</span><span class="i">4d</span></div>
+    <div class="btn" style="background:var(--rate-good)"><span class="v">Good</span><span class="i">9d</span></div>
+    <div class="btn" style="background:var(--rate-easy)"><span class="v">Easy</span><span class="i">21d</span></div>
+  </div>
+</body></html>

@@ -1,0 +1,353 @@
+/**
+ * Onboarding — language first (F1). Four data-driven steps, a persistent
+ * skip, and an exit that lands the learner in a state matching their
+ * choices: the picked language's decks activate, goals persist, and
+ * "Start learning" drops straight into the first session.
+ */
+import { useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Btn, CardBox, FlagSq, Ion, RiseIn, Row, Stepper } from '@/components/ui';
+import { useData } from '@/store/DataContext';
+import { font } from '@/theme/tokens';
+import { useColors } from '@/theme/ThemeContext';
+
+const LANG_OPTIONS = [
+  { flag: '🇩🇪', name: 'German' },
+  { flag: '🇪🇸', name: 'Spanish' },
+  { flag: '🇫🇷', name: 'French' },
+];
+
+export default function OnboardingScreen() {
+  const c = useColors();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { state, actions } = useData();
+
+  const [step, setStep] = useState(0);
+  const [lang, setLang] = useState<string | null>(null);
+  const [neww, setNeww] = useState(10);
+  const [reviews, setReviews] = useState(30);
+
+  const mins = Math.max(2, Math.round(((neww + reviews) * 10) / 60));
+
+  /* honest per-language inventory from the real decks */
+  const langMeta = useMemo(() => {
+    const meta: Record<string, string> = {};
+    LANG_OPTIONS.forEach(({ name }) => {
+      const decks = state.decks.filter((d) => d.lang === name);
+      const deckIds = new Set(decks.map((d) => d.id));
+      const count = state.cards.filter((x) => deckIds.has(x.deckId)).length;
+      const levels = [...new Set(decks.map((d) => d.level).filter(Boolean))].join('–');
+      meta[name] = `${count} cards${levels ? ` · ${levels}` : ''}`;
+    });
+    return meta;
+  }, [state.decks, state.cards]);
+
+  const applyChoices = () => {
+    actions.setGoals(reviews, neww);
+    actions.updateSrsSettings({ dailyNewLimit: neww, dailyReviewLimit: Math.max(reviews, 30) });
+    if (lang) {
+      state.decks.forEach((d) => {
+        if (d.lang === lang && !d.active) actions.updateDeck(d.id, { active: true });
+      });
+    }
+    actions.markOnboarded();
+  };
+
+  const finishToHome = () => {
+    applyChoices();
+    router.back();
+  };
+
+  const startLearning = () => {
+    applyChoices();
+    router.replace({
+      pathname: '/session',
+      params: { kind: 'scheduled', label: lang ? `${lang} decks` : 'All decks' },
+    });
+  };
+
+  const skip = () => {
+    actions.markOnboarded();
+    router.back();
+  };
+
+  const next = () => (step < 3 ? setStep(step + 1) : finishToHome());
+
+  const stepBody = [
+    /* 0 — welcome */
+    <RiseIn key="w" duration={300}>
+      <View style={{ alignItems: 'center' }}>
+        <Text
+          style={[
+            font('serif', 600),
+            { fontSize: 44, letterSpacing: -0.88, color: c.ink, marginTop: 30 },
+          ]}
+        >
+          Maranki
+        </Text>
+        <Text
+          style={[
+            font('serif', 400, true),
+            { fontSize: 19, color: c.ink2, marginTop: 10, marginBottom: 30 },
+          ]}
+        >
+          Learn words. Keep them.
+        </Text>
+      </View>
+      <CardBox>
+        {(
+          [
+            ['albums-outline', 'Study a few cards a day', 'Short sessions, real sentences.'],
+            [
+              'repeat',
+              'We bring each word back',
+              'Just before you’d forget it — that’s spaced repetition.',
+            ],
+            ['flame', 'Streaks make it stick', 'A little every day beats a lot once a week.'],
+          ] as [string, string, string][]
+        ).map(([icon, t, s], i, arr) => (
+          <View
+            key={t}
+            style={{
+              flexDirection: 'row',
+              gap: 13,
+              alignItems: 'flex-start',
+              paddingVertical: 11,
+              borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+              borderBottomColor: c.hairlineSoft,
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 11,
+                backgroundColor: c.pineTint,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ion name={icon} size={17} color={c.pine} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[font('sans', 700), { fontSize: 14.5, color: c.ink }]}>{t}</Text>
+              <Text style={[font('sans', 400), { fontSize: 13, color: c.ink3, marginTop: 1 }]}>
+                {s}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </CardBox>
+    </RiseIn>,
+
+    /* 1 — language first */
+    <RiseIn key="l" duration={300}>
+      <Text
+        style={[
+          font('serif', 600),
+          { fontSize: 26, lineHeight: 30, color: c.ink, marginTop: 24, marginBottom: 6 },
+        ]}
+      >
+        What do you want to learn?
+      </Text>
+      <Text style={[font('sans', 400), { fontSize: 14, color: c.ink2, marginBottom: 20 }]}>
+        We’ll set up the right decks for you.
+      </Text>
+      {LANG_OPTIONS.map(({ flag, name }) => (
+        <Pressable
+          key={name}
+          onPress={() => setLang(name)}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 13,
+            paddingVertical: 13,
+            paddingHorizontal: 15,
+            marginBottom: 10,
+            backgroundColor: lang === name ? c.pineTint : c.card,
+            borderRadius: 14,
+            borderWidth: lang === name ? 1.5 : 1,
+            borderColor: lang === name ? c.pine : c.hairline,
+            transform: [{ scale: pressed ? 0.985 : 1 }],
+          })}
+        >
+          <FlagSq flag={flag} size={40} />
+          <View style={{ flex: 1 }}>
+            <Text style={[font('sans', 800), { fontSize: 16, color: c.ink }]}>{name}</Text>
+            <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink3 }]}>
+              {langMeta[name]}
+            </Text>
+          </View>
+          {lang === name && <Ion name="checkmark-circle" size={22} color={c.pine} />}
+        </Pressable>
+      ))}
+      <Pressable
+        onPress={() => router.push('/import')}
+        style={({ pressed }) => ({
+          borderWidth: 1.5,
+          borderStyle: 'dashed',
+          borderColor: c.hairlineStrong,
+          borderRadius: 14,
+          paddingVertical: 13,
+          paddingHorizontal: 15,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <Ion name="cloud-download-outline" size={17} color={c.ink2} />
+        <Text style={[font('sans', 700), { fontSize: 14, color: c.ink2 }]}>
+          Or import your own deck
+        </Text>
+      </Pressable>
+    </RiseIn>,
+
+    /* 2 — goals */
+    <RiseIn key="g" duration={300}>
+      <Text style={[font('serif', 600), { fontSize: 28, color: c.ink, marginTop: 24, marginBottom: 4 }]}>
+        A pace you can keep
+      </Text>
+      <Text style={[font('sans', 400), { fontSize: 14, color: c.ink2, marginBottom: 18 }]}>
+        You can change this anytime in Settings.
+      </Text>
+      <CardBox>
+        <Row padV={12}>
+          <View style={{ flex: 1 }}>
+            <Text style={[font('sans', 700), { fontSize: 14.5, color: c.ink }]}>
+              New words a day
+            </Text>
+            <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink3 }]}>
+              Fresh vocabulary entering rotation
+            </Text>
+          </View>
+          <Stepper value={neww} onChange={setNeww} min={5} max={50} step={5} />
+        </Row>
+        <Row padV={12} last>
+          <View style={{ flex: 1 }}>
+            <Text style={[font('sans', 700), { fontSize: 14.5, color: c.ink }]}>Reviews a day</Text>
+            <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink3 }]}>
+              Words coming back to be kept
+            </Text>
+          </View>
+          <Stepper value={reviews} onChange={setReviews} min={10} max={200} step={10} />
+        </Row>
+      </CardBox>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          marginTop: 16,
+        }}
+      >
+        <Ion name="time-outline" size={15} color={c.pine} />
+        <Text style={[font('sans', 400), { fontSize: 13.5, color: c.ink2 }]}>
+          That’s about <Text style={[font('sans', 700), { color: c.ink }]}>{mins} minutes</Text> a
+          day.
+        </Text>
+      </View>
+    </RiseIn>,
+
+    /* 3 — ready */
+    <RiseIn key="r" duration={300}>
+      <View style={{ alignItems: 'center' }}>
+        <View
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 999,
+            backgroundColor: c.amberTint,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 36,
+            marginBottom: 18,
+          }}
+        >
+          <Ion name="flame" size={30} color={c.amber} />
+        </View>
+        <Text
+          style={[
+            font('serif', 600),
+            { fontSize: 28, lineHeight: 33, color: c.ink, marginBottom: 8, textAlign: 'center' },
+          ]}
+        >
+          {lang ?? 'German'}, {neww} new words a day.
+        </Text>
+        <Text
+          style={[
+            font('sans', 400),
+            {
+              fontSize: 14.5,
+              lineHeight: 22,
+              color: c.ink2,
+              textAlign: 'center',
+              maxWidth: 270,
+            },
+          ]}
+        >
+          Your first session is ready — {neww} words, about{' '}
+          {Math.max(2, Math.round((neww * 10) / 60))} minutes. Day one of your streak starts now.
+        </Text>
+      </View>
+    </RiseIn>,
+  ];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.paper }}>
+      {/* progress + skip */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingTop: insets.top + 8,
+          paddingHorizontal: 20,
+        }}
+      >
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <View
+              key={i}
+              style={{
+                width: i === step ? 22 : 7,
+                height: 7,
+                borderRadius: 99,
+                backgroundColor: i <= step ? c.pine : c.hairlineStrong,
+              }}
+            />
+          ))}
+        </View>
+        <Pressable onPress={skip} hitSlop={8}>
+          <Text style={[font('sans', 700), { fontSize: 14, color: c.ink3 }]}>Skip</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {stepBody[step]}
+      </ScrollView>
+
+      <View style={{ paddingHorizontal: 22, paddingTop: 14, paddingBottom: insets.bottom + 30 }}>
+        {step === 3 ? (
+          <Btn full size="lg" icon="play" onPress={startLearning}>
+            Start learning
+          </Btn>
+        ) : (
+          <Btn full size="lg" onPress={next} disabled={step === 1 && !lang}>
+            Continue
+          </Btn>
+        )}
+      </View>
+    </View>
+  );
+}

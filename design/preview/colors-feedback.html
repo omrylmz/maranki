@@ -1,0 +1,21 @@
+<!-- @dsCard group="Colors" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0}
+  body{background:var(--paper);font-family:var(--font-sans);color:var(--ink);padding:22px 24px;}
+  .row{display:flex;gap:14px;}
+  .sw{flex:1;}
+  .chip{height:46px;border-radius:var(--r-sm) var(--r-sm) 0 0;}
+  .tint{height:22px;border-radius:0 0 var(--r-sm) var(--r-sm);display:flex;align-items:center;padding-left:10px;}
+  .n{font-size:12px;font-weight:700;margin-top:8px;}
+  .h{font-size:10.5px;font-family:var(--font-mono);color:var(--ink-3);}
+  .tn{font-size:10px;font-family:var(--font-mono);}
+</style></head><body>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--success)"></div><div class="tint" style="background:var(--success-tint)"><span class="tn" style="color:var(--success)">tint</span></div><div class="n">Success</div><div class="h">#2E8B6F</div></div>
+    <div class="sw"><div class="chip" style="background:var(--warning)"></div><div class="tint" style="background:var(--warning-tint)"><span class="tn" style="color:var(--warning)">tint</span></div><div class="n">Warning</div><div class="h">#C77E22</div></div>
+    <div class="sw"><div class="chip" style="background:var(--danger)"></div><div class="tint" style="background:var(--danger-tint)"><span class="tn" style="color:var(--danger)">tint</span></div><div class="n">Danger</div><div class="h">#BF4536</div></div>
+    <div class="sw"><div class="chip" style="background:var(--info)"></div><div class="tint" style="background:var(--info-tint)"><span class="tn" style="color:var(--info)">tint</span></div><div class="n">Info</div><div class="h">#2D77B0</div></div>
+  </div>
+</body></html>

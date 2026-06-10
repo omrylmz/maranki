@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="../ion-inline.js"></script>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0}
+  body{background:var(--paper);font-family:var(--font-sans);color:var(--ink);padding:24px;}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .rate{display:flex;flex-direction:column;align-items:center;gap:5px;border:none;border-radius:var(--r-md);padding:14px 8px 12px;color:#fff;cursor:pointer;box-shadow:var(--shadow-sm);}
+  .rate ion-icon{font-size:22px;}
+  .lab{font-weight:800;font-size:15px;}
+  .iv{font-family:var(--font-mono);font-size:12px;opacity:.9;}
+  .cap{font-size:11px;color:var(--ink-3);margin-bottom:14px;font-weight:600;}
+</style></head><body>
+  <div class="cap">SRS rating buttons — Ionicons + interval preview</div>
+  <div class="grid">
+    <button class="rate" style="background:var(--rate-again)"><ion-icon name="refresh"></ion-icon><span class="lab">Again</span><span class="iv">soon</span></button>
+    <button class="rate" style="background:var(--rate-hard)"><ion-icon name="arrow-down"></ion-icon><span class="lab">Hard</span><span class="iv">4d</span></button>
+    <button class="rate" style="background:var(--rate-good)"><ion-icon name="checkmark"></ion-icon><span class="lab">Good</span><span class="iv">9d</span></button>
+    <button class="rate" style="background:var(--rate-easy)"><ion-icon name="flash"></ion-icon><span class="lab">Easy</span><span class="iv">21d</span></button>
+  </div>
+</body></html>

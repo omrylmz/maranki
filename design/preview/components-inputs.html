@@ -1,0 +1,25 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="../ion-inline.js"></script>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0}
+  body{background:var(--paper);font-family:var(--font-sans);color:var(--ink);padding:24px;display:flex;gap:16px;}
+  .field{flex:1;}
+  .lbl{font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:7px;display:block;}
+  .input{width:100%;box-sizing:border-box;font-family:var(--font-sans);font-size:15px;color:var(--ink);background:var(--card);border:1px solid var(--hairline-strong);border-radius:var(--r-sm);padding:12px 14px;}
+  .input.focus{border-color:var(--pine);box-shadow:0 0 0 3px var(--pine-tint);outline:none;}
+  .search{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--hairline-strong);border-radius:var(--r-pill);padding:11px 16px;}
+  .search input{border:none;background:none;font-family:var(--font-sans);font-size:15px;width:100%;color:var(--ink);outline:none;}
+  ion-icon{font-size:18px;color:var(--ink-3);}
+  .ph{color:var(--ink-3);}
+</style></head><body>
+  <div class="field">
+    <label class="lbl">Word</label>
+    <input class="input focus" value="die Stunde">
+  </div>
+  <div class="field">
+    <label class="lbl">Search library</label>
+    <div class="search"><ion-icon name="search"></ion-icon><input placeholder="Search 1,240 cards…"></div>
+  </div>
+</body></html>

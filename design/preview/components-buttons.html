@@ -1,0 +1,27 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="../ion-inline.js"></script>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0}
+  body{background:var(--paper);font-family:var(--font-sans);color:var(--ink);padding:24px;display:flex;flex-direction:column;gap:14px;}
+  .row{display:flex;gap:12px;align-items:center;}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-sans);font-weight:700;font-size:15px;border-radius:var(--r-pill);padding:12px 22px;border:none;cursor:pointer;}
+  .primary{background:var(--pine);color:var(--ink-on-color);box-shadow:var(--shadow-sm);}
+  .reward{background:var(--amber);color:#fff;box-shadow:var(--shadow-sm);}
+  .secondary{background:var(--card);color:var(--ink);border:1px solid var(--hairline-strong);}
+  .ghost{background:transparent;color:var(--pine);}
+  .danger{background:var(--danger-tint);color:var(--danger);}
+  ion-icon{font-size:18px;}
+</style></head><body>
+  <div class="row">
+    <button class="btn primary"><ion-icon name="play"></ion-icon>Start review</button>
+    <button class="btn reward"><ion-icon name="flame"></ion-icon>Study ahead</button>
+    <button class="btn secondary"><ion-icon name="add"></ion-icon>Add card</button>
+  </div>
+  <div class="row">
+    <button class="btn ghost">Maybe later</button>
+    <button class="btn danger"><ion-icon name="trash"></ion-icon>Delete deck</button>
+    <button class="btn secondary" style="padding:12px;border-radius:var(--r-pill)"><ion-icon name="ellipsis-horizontal"></ion-icon></button>
+  </div>
+</body></html>

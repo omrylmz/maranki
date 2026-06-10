@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Maranki",
+    "slug": "maranki",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "maranki",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F4F0E7",
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F4F0E7",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F4F0E7",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 140,
+          "dark": {
+            "backgroundColor": "#1C1916"
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

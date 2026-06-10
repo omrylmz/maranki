@@ -1,0 +1,23 @@
+<!-- @dsCard group="Spacing" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0}
+  body{background:var(--paper);font-family:var(--font-sans);color:var(--ink);padding:22px 24px;}
+  .row{display:flex;gap:16px;align-items:flex-end;}
+  .col{display:flex;flex-direction:column;align-items:center;gap:9px;}
+  .box{width:62px;height:62px;background:var(--card);border:1px solid var(--hairline-strong);box-shadow:var(--shadow-xs);}
+  .n{font-size:11px;font-weight:700;}
+  .h{font-size:10px;font-family:var(--font-mono);color:var(--ink-3);}
+  .cap{font-size:11px;color:var(--ink-3);margin-bottom:14px;font-weight:600;}
+</style></head><body>
+  <div class="cap">Corner radii</div>
+  <div class="row">
+    <div class="col"><div class="box" style="border-radius:var(--r-xs)"></div><div class="n">xs</div><div class="h">6</div></div>
+    <div class="col"><div class="box" style="border-radius:var(--r-sm)"></div><div class="n">sm</div><div class="h">10</div></div>
+    <div class="col"><div class="box" style="border-radius:var(--r-md)"></div><div class="n">md</div><div class="h">14</div></div>
+    <div class="col"><div class="box" style="border-radius:var(--r-lg)"></div><div class="n">lg</div><div class="h">20</div></div>
+    <div class="col"><div class="box" style="border-radius:var(--r-xl)"></div><div class="n">xl</div><div class="h">28</div></div>
+    <div class="col"><div class="box" style="border-radius:var(--r-pill)"></div><div class="n">pill</div><div class="h">999</div></div>
+  </div>
+</body></html>
