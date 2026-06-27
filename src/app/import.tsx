@@ -6,6 +6,7 @@
  * (B6b). The import genuinely writes a deck; preserved SRS fields come
  * along. Real .apkg/CSV parsing + error states remain WIRING.md §5 work.
  */
+import { File } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -23,7 +24,14 @@ import {
   SnackbarHost,
   StackBar,
 } from '@/components/ui';
-import { SHARED_DECKS, SharedDeck, sharedDeckFromLink } from '@/domain/importSamples';
+import { apkgErrorMessage, parseApkg } from '@/domain/importApkg';
+import { detectImportKind, parseImportCsv } from '@/domain/importFile';
+import {
+  ImportCardPayload,
+  SHARED_DECKS,
+  SharedDeck,
+  sharedDeckFromLink,
+} from '@/domain/importSamples';
 import { Deck } from '@/domain/types';
 import { useData } from '@/store/DataContext';
 import { useSnackbar } from '@/store/SnackbarContext';
@@ -46,6 +54,7 @@ export default function ImportScreen() {
   const [importedDeck, setImportedDeck] = useState<Deck | null>(null);
   const [importedCount, setImportedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
+  const [busy, setBusy] = useState(false);
 
   const results = useMemo(
     () => SHARED_DECKS.filter((r) => !q || r.name.toLowerCase().includes(q.toLowerCase())),
@@ -98,6 +107,86 @@ export default function ImportScreen() {
     setChosen(deck);
     setProg(0);
     setStage('preview');
+  };
+
+  /**
+   * Real OS file picker for the "From a file" source. A CSV is parsed inline; an
+   * .apkg is unzipped + read via SQLite (parseApkg). Both paths end at the same
+   * pick() the AnkiWeb rows use, so preview → importing → done run unchanged.
+   */
+  const onChooseFile = async () => {
+    if (busy) return; // guard double taps / re-entrancy
+    setBusy(true);
+    try {
+      const picked = await File.pickFileAsync({
+        // Broad on purpose: Android MIME types are unreliable, so we accept
+        // anything and validate AFTER the pick by extension + content.
+        mimeTypes: [
+          'text/*',
+          'text/csv',
+          'text/comma-separated-values',
+          'application/vnd.ms-excel',
+          'application/zip',
+          '*/*',
+        ],
+      });
+      if (picked.canceled) return; // dismissed the picker — write nothing, say nothing
+
+      const file = picked.result; // narrowed to File by the `canceled` discriminant
+
+      // Hand a parsed deck to the existing staged flow. id keyed on the (session-
+      // stable) uri — no Date.now()/Math.random() needed.
+      const finish = (payload: ImportCardPayload[], name: string) => {
+        if (payload.length === 0) {
+          show('No cards found in that file.');
+          return;
+        }
+        pick({ id: `file:${file.uri}`, name, cards: payload.length, cat: 'Imported', by: 'File', flag: '📄', lang: 'German', payload });
+      };
+
+      // Read the raw bytes ONCE and classify by magic. Android SAF often returns
+      // an opaque name with no .apkg extension, so we must not gate on the name —
+      // nor waste a full binary→string text() decode of a large deck just to sniff.
+      const bytes = await file.bytes();
+      const isZip = bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b; // 'PK'
+      const isSqlite =
+        bytes.length >= 4 &&
+        bytes[0] === 0x53 &&
+        bytes[1] === 0x51 &&
+        bytes[2] === 0x4c &&
+        bytes[3] === 0x69; // 'SQLi'
+
+      if (/\.(apkg|colpkg)$/i.test(file.name) || isZip || isSqlite) {
+        // .apkg: unzip + read its SQLite collection. Its own try/catch surfaces a
+        // specific message (newer-format / empty / corrupt).
+        try {
+          const parsed = await parseApkg(bytes, file.name);
+          finish(parsed.payload, parsed.name);
+        } catch (err) {
+          show(apkgErrorMessage(err));
+        }
+        return;
+      }
+
+      // Not an Anki package → a (small) text/CSV file. file.text() decodes the
+      // bytes; CSVs are KB-sized so the extra read is negligible.
+      const text = await file.text();
+      if (!text.trim()) {
+        show('That file is empty — pick a .csv or .apkg.');
+        return;
+      }
+      if (detectImportKind(file.name, text.slice(0, 4096)) !== 'csv') {
+        show('Could not recognise that file — export a .csv or .apkg.');
+        return;
+      }
+      // parseImportCsv returns { payload, name } (NOT an array) — destructure it.
+      const { payload, name } = parseImportCsv(text, file.name);
+      finish(payload, name);
+    } catch {
+      show('Could not read that file. Please try a different export.');
+    } finally {
+      setBusy(false); // always re-enable the picker button
+    }
   };
 
   const studyNew = () => {
@@ -259,7 +348,8 @@ export default function ImportScreen() {
             {src === 'file' && (
               <View style={{ marginTop: 18 }}>
                 <Pressable
-                  onPress={() => pick(SHARED_DECKS[1])}
+                  onPress={onChooseFile}
+                  disabled={busy}
                   style={({ pressed }) => ({
                     borderWidth: 1.5,
                     borderStyle: 'dashed',
@@ -268,14 +358,18 @@ export default function ImportScreen() {
                     paddingVertical: 34,
                     paddingHorizontal: 20,
                     alignItems: 'center',
-                    opacity: pressed ? 0.7 : 1,
+                    opacity: busy ? 0.55 : pressed ? 0.7 : 1,
                   })}
                 >
-                  <Ion name="document-attach-outline" size={30} color={c.ink3} />
+                  <Ion
+                    name={busy ? 'hourglass-outline' : 'document-attach-outline'}
+                    size={30}
+                    color={c.ink3}
+                  />
                   <Text
                     style={[font('sans', 700), { fontSize: 15, color: c.ink, marginTop: 10, marginBottom: 4 }]}
                   >
-                    Choose a file
+                    {busy ? 'Reading file…' : 'Choose a file'}
                   </Text>
                   <Text style={[font('sans', 400), { fontSize: 13, color: c.ink3 }]}>
                     .csv or .apkg — we’ll detect which
