@@ -1,15 +1,18 @@
 /**
  * Import hub (B6) — one destination, three sources (AnkiWeb / file / backup),
- * a shared staged flow: source → honest preview ("nothing imported yet",
- * real duplicate count) → cancellable progress → done with a "Go study"
- * forward action. Pasting an AnkiWeb URL or deck ID surfaces a direct row
- * (B6b). The import genuinely writes a deck; preserved SRS fields come
- * along. Real .apkg/CSV parsing + error states remain WIRING.md §5 work.
+ * a shared staged flow: source → honest preview ("nothing imported yet") →
+ * cancellable progress → done with a "Go study" forward action.
+ *
+ * The AnkiWeb source is REAL (src/domain/ankiweb.ts): a debounced search hits
+ * AnkiWeb's shared-deck listing, picking previews the listing's true metadata,
+ * and importing downloads the .apkg, parses it (parseApkg), dedupes against the
+ * library and writes via importDeck — the same SRS-preserving path the file
+ * source uses. Pasting an AnkiWeb URL / deck id surfaces a direct row (B6b).
  */
 import { File } from 'expo-file-system';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import {
   Btn,
@@ -18,20 +21,21 @@ import {
   ListRow,
   Overline,
   RiseIn,
-  Ring,
   Row,
   SegCtrl,
   SnackbarHost,
   StackBar,
 } from '@/components/ui';
-import { apkgErrorMessage, parseApkg } from '@/domain/importApkg';
-import { detectImportKind, parseImportCsv } from '@/domain/importFile';
 import {
-  ImportCardPayload,
-  SHARED_DECKS,
-  SharedDeck,
-  sharedDeckFromLink,
-} from '@/domain/importSamples';
+  AnkiWebDeck,
+  AnkiWebError,
+  downloadSharedDeck,
+  parseAnkiWebId,
+  searchSharedDecks,
+} from '@/domain/ankiweb';
+import { ApkgError, apkgErrorMessage, parseApkg } from '@/domain/importApkg';
+import { detectImportKind, parseImportCsv } from '@/domain/importFile';
+import { ImportCardPayload } from '@/domain/importSamples';
 import { Deck } from '@/domain/types';
 import { useData } from '@/store/DataContext';
 import { useSnackbar } from '@/store/SnackbarContext';
@@ -39,6 +43,19 @@ import { font, tnum } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
 
 type Stage = 'idle' | 'preview' | 'importing' | 'done';
+
+/**
+ * The staged item, discriminated by source. An AnkiWeb pick carries only the
+ * id + listing metadata — the actual cards are downloaded + parsed at import
+ * time. A file pick already holds the parsed payload in hand.
+ */
+type Staged =
+  | { source: 'ankiweb'; id: string; name: string; deck: AnkiWebDeck | null }
+  | { source: 'file'; name: string; flag: string; lang: string; payload: ImportCardPayload[] };
+
+const SEARCH_DEBOUNCE_MS = 350;
+/** German-learning app: an empty query still surfaces useful (German) decks. */
+const DEFAULT_QUERY = 'german';
 
 export default function ImportScreen() {
   const c = useColors();
@@ -48,71 +65,85 @@ export default function ImportScreen() {
 
   const [src, setSrc] = useState('anki');
   const [stage, setStage] = useState<Stage>('idle');
-  const [prog, setProg] = useState(0);
   const [q, setQ] = useState('');
-  const [chosen, setChosen] = useState<SharedDeck | null>(null);
+  const [results, setResults] = useState<AnkiWebDeck[]>([]);
+  // Starts true: the screen kicks off a default search on mount, so this keeps
+  // the empty-state ("No shared decks match") from flashing before results land.
+  const [searching, setSearching] = useState(true);
+  const [chosen, setChosen] = useState<Staged | null>(null);
+  const [importPhase, setImportPhase] = useState<'download' | 'write' | null>(null);
   const [importedDeck, setImportedDeck] = useState<Deck | null>(null);
   const [importedCount, setImportedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [busy, setBusy] = useState(false);
 
-  const results = useMemo(
-    () => SHARED_DECKS.filter((r) => !q || r.name.toLowerCase().includes(q.toLowerCase())),
-    [q],
-  );
-
-  /* pasted AnkiWeb URL or numeric deck ID → straight to preview (B6b) */
-  const pastedId = /^(https?:\/\/|ankiweb\.|\d{6,})/i.test(q.trim());
-
-  /* honest duplicate count: words already in the library */
-  const dupes = useMemo(() => {
-    if (!chosen) return 0;
-    const have = new Set(state.cards.map((x) => x.word.toLowerCase()));
-    return chosen.payload.filter((p) => have.has(p.word.toLowerCase())).length;
-  }, [chosen, state.cards]);
-  const withProgress = useMemo(
-    () => (chosen ? chosen.payload.filter((p) => (p.reps ?? 0) > 0).length : 0),
-    [chosen],
-  );
-
+  // Lifetime guards for the async network paths: never setState after unmount,
+  // and abort an in-flight import/search when the screen goes away.
+  const mountedRef = useRef(true);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const importAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (stage !== 'importing' || !chosen) return;
-    let p = 0;
-    const cards = state.cards;
-    const t = setInterval(() => {
-      p += 4;
-      if (p < 100) {
-        setProg(p);
-        return;
-      }
-      clearInterval(t);
-      setProg(100);
-      // the real write — dedupe against the library, keep SRS fields
-      const have = new Set(cards.map((x) => x.word.toLowerCase()));
-      const fresh = chosen.payload.filter((x) => !have.has(x.word.toLowerCase()));
-      const deck = actions.importDeck(
-        { name: chosen.name, flag: chosen.flag, lang: chosen.lang },
-        fresh,
-      );
-      setImportedDeck(deck);
-      setImportedCount(fresh.length);
-      setSkippedCount(chosen.payload.length - fresh.length);
-      setStage('done');
-    }, 60);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      searchAbortRef.current?.abort();
+      importAbortRef.current?.abort();
+    };
+  }, []);
 
-  const pick = (deck: SharedDeck) => {
-    setChosen(deck);
-    setProg(0);
+  // A pasted AnkiWeb URL / numeric id short-circuits search → direct row (B6b).
+  const ankiId = parseAnkiWebId(q.trim());
+
+  /* ---------------------- real, debounced AnkiWeb search ----------------------
+   * All setState lives inside the debounce timer / promise callbacks — never
+   * synchronously in the effect body (the React Compiler forbids that). The
+   * other tabs don't search, and a pasted id is served by the direct row, so
+   * those cases just return early: their stale results/searching are hidden in
+   * render and get overwritten the next time a real query runs. */
+  useEffect(() => {
+    // Cancel any search already in flight before scheduling the next one.
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = null;
+
+    if (src !== 'anki' || parseAnkiWebId(q.trim())) return;
+
+    const query = q.trim() === '' ? DEFAULT_QUERY : q.trim();
+    const ctrl = new AbortController();
+    searchAbortRef.current = ctrl;
+
+    const handle = setTimeout(() => {
+      setSearching(true);
+      searchSharedDecks(query, ctrl.signal)
+        .then((decks) => {
+          if (ctrl.signal.aborted || !mountedRef.current) return;
+          setResults(decks);
+          setSearching(false);
+        })
+        .catch((err: unknown) => {
+          // An aborted fetch is normal cancellation (next keystroke / unmount).
+          if (ctrl.signal.aborted || !mountedRef.current) return;
+          setResults([]);
+          setSearching(false);
+          show(err instanceof AnkiWebError ? err.message : 'Could not search AnkiWeb. Try again.');
+        });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(handle);
+      ctrl.abort();
+    };
+  }, [q, src, show]);
+
+  const stageItem = (item: Staged) => {
+    setChosen(item);
+    setImportPhase(null);
     setStage('preview');
   };
 
   /**
    * Real OS file picker for the "From a file" source. A CSV is parsed inline; an
    * .apkg is unzipped + read via SQLite (parseApkg). Both paths end at the same
-   * pick() the AnkiWeb rows use, so preview → importing → done run unchanged.
+   * stageItem() the AnkiWeb rows use, so preview → importing → done run unchanged.
    */
   const onChooseFile = async () => {
     if (busy) return; // guard double taps / re-entrancy
@@ -134,14 +165,13 @@ export default function ImportScreen() {
 
       const file = picked.result; // narrowed to File by the `canceled` discriminant
 
-      // Hand a parsed deck to the existing staged flow. id keyed on the (session-
-      // stable) uri — no Date.now()/Math.random() needed.
+      // Hand a parsed deck to the existing staged flow.
       const finish = (payload: ImportCardPayload[], name: string) => {
         if (payload.length === 0) {
           show('No cards found in that file.');
           return;
         }
-        pick({ id: `file:${file.uri}`, name, cards: payload.length, cat: 'Imported', by: 'File', flag: '📄', lang: 'German', payload });
+        stageItem({ source: 'file', name, flag: '📄', lang: 'German', payload });
       };
 
       // Read the raw bytes ONCE and classify by magic. Android SAF often returns
@@ -189,6 +219,77 @@ export default function ImportScreen() {
     }
   };
 
+  /**
+   * Run the staged import. For an AnkiWeb item: download the .apkg, parse it,
+   * then dedupe + write. A file item already holds its parsed payload, so it
+   * skips straight to the write. Honest indeterminate phases; cancellable via
+   * the AbortController (only the network download is interruptible — the parse
+   * + write are guarded by re-checking the signal before they commit anything).
+   */
+  const runImport = async () => {
+    if (!chosen) return;
+    const ctrl = new AbortController();
+    importAbortRef.current = ctrl;
+    setStage('importing');
+    setImportPhase(chosen.source === 'ankiweb' ? 'download' : 'write');
+
+    try {
+      let payload: ImportCardPayload[];
+      let deckFields: Pick<Deck, 'name' | 'flag' | 'lang'>;
+
+      if (chosen.source === 'ankiweb') {
+        const bytes = await downloadSharedDeck(chosen.id, ctrl.signal);
+        if (ctrl.signal.aborted || !mountedRef.current) return;
+        setImportPhase('write');
+        // The listing name is the fallback; the true deck name comes from the
+        // collection inside the .apkg when present.
+        const parsed = await parseApkg(bytes, chosen.name);
+        if (ctrl.signal.aborted || !mountedRef.current) return;
+        payload = parsed.payload;
+        deckFields = { name: parsed.name, flag: '🇩🇪', lang: 'German' };
+      } else {
+        payload = chosen.payload;
+        deckFields = { name: chosen.name, flag: chosen.flag, lang: chosen.lang };
+      }
+
+      // Dedupe against existing library words; importDeck preserves any SRS
+      // fields the payload carries (Anki fidelity). No await past this point, so
+      // a late Cancel can't interleave between the check and the write.
+      const have = new Set(state.cards.map((x) => x.word.toLowerCase()));
+      const fresh = payload.filter((p) => !have.has(p.word.toLowerCase()));
+      const deck = actions.importDeck(deckFields, fresh);
+
+      if (!mountedRef.current) return;
+      setImportedDeck(deck);
+      setImportedCount(fresh.length);
+      setSkippedCount(payload.length - fresh.length);
+      setImportPhase(null);
+      setStage('done');
+    } catch (err) {
+      // Cancellation (aborted signal) is owned by the Cancel button — stay quiet.
+      if (ctrl.signal.aborted || !mountedRef.current) return;
+      const msg =
+        err instanceof ApkgError
+          ? apkgErrorMessage(err)
+          : err instanceof AnkiWebError
+            ? err.message
+            : 'Could not import that deck. Please try again.';
+      show(msg);
+      setImportPhase(null);
+      setStage('idle');
+    } finally {
+      if (importAbortRef.current === ctrl) importAbortRef.current = null;
+    }
+  };
+
+  const cancelImport = () => {
+    importAbortRef.current?.abort();
+    importAbortRef.current = null;
+    setImportPhase(null);
+    setStage('idle');
+    show('Import cancelled — nothing was written');
+  };
+
   const studyNew = () => {
     if (!importedDeck) return;
     router.replace({
@@ -197,16 +298,55 @@ export default function ImportScreen() {
     });
   };
 
-  const previewRows: [string, string][] = chosen
-    ? [
+  /* Preview rows differ by source: a file item knows its exact payload (so it
+   * can show a real duplicate count), an AnkiWeb item only knows the listing
+   * metadata (a pre-download dupe count is impossible — that is fine). */
+  const previewRows = useMemo<[string, string][]>(() => {
+    if (!chosen) return [];
+    if (chosen.source === 'file') {
+      const have = new Set(state.cards.map((x) => x.word.toLowerCase()));
+      const dupes = chosen.payload.filter((p) => have.has(p.word.toLowerCase())).length;
+      const withProgress = chosen.payload.filter((p) => (p.reps ?? 0) > 0).length;
+      return [
         ['Cards', chosen.payload.length.toLocaleString('en-US')],
         ['With study progress', withProgress.toLocaleString('en-US')],
         [
           'Already in your library',
           dupes > 0 ? `${dupes} duplicates — will be skipped` : 'no duplicates',
         ],
-      ]
-    : [];
+      ];
+    }
+    const d = chosen.deck;
+    if (!d) return [['AnkiWeb deck', `#${chosen.id}`]];
+    const rows: [string, string][] = [['Notes', d.notes.toLocaleString('en-US')]];
+    if (d.audio > 0) rows.push(['Audio clips', d.audio.toLocaleString('en-US')]);
+    if (d.images > 0) rows.push(['Images', d.images.toLocaleString('en-US')]);
+    if (d.modifiedSec > 0) {
+      rows.push([
+        'Updated',
+        new Date(d.modifiedSec * 1000).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        }),
+      ]);
+    }
+    rows.push(['Upvotes', d.upvotes.toLocaleString('en-US')]);
+    return rows;
+  }, [chosen, state.cards]);
+
+  const previewNote =
+    chosen?.source === 'ankiweb'
+      ? 'We download the deck from AnkiWeb, then add its cards — anything already in your library is skipped.'
+      : chosen && chosen.payload.some((p) => (p.reps ?? 0) > 0)
+        ? 'Anki scheduling is preserved — ease, intervals and due dates come along.'
+        : 'New cards are added to your library — duplicates are skipped.';
+
+  const caption = ankiId
+    ? 'From your link'
+    : q.trim() === ''
+      ? 'Popular for German learners'
+      : 'Search results';
 
   return (
     <View style={{ flex: 1, backgroundColor: c.paper }}>
@@ -259,6 +399,7 @@ export default function ImportScreen() {
                     autoCapitalize="none"
                     style={[font('sans', 400), { flex: 1, fontSize: 14.5, color: c.ink, padding: 0 }]}
                   />
+                  {searching && !ankiId ? <ActivityIndicator size="small" color={c.ink3} /> : null}
                 </View>
                 <Text
                   style={[
@@ -266,11 +407,22 @@ export default function ImportScreen() {
                     { fontSize: 12.5, color: c.ink3, marginTop: 10, marginBottom: 4, marginHorizontal: 2 },
                   ]}
                 >
-                  {pastedId ? 'From your link' : 'Popular for German learners'}
+                  {caption}
                 </Text>
 
-                {pastedId && (
-                  <Row onPress={() => pick(sharedDeckFromLink(q.trim()))} padV={13} last={results.length === 0}>
+                {ankiId ? (
+                  <Row
+                    onPress={() =>
+                      stageItem({
+                        source: 'ankiweb',
+                        id: ankiId,
+                        name: `AnkiWeb deck #${ankiId}`,
+                        deck: null,
+                      })
+                    }
+                    padV={13}
+                    last
+                  >
                     <View
                       style={{
                         width: 36,
@@ -296,52 +448,89 @@ export default function ImportScreen() {
                     </View>
                     <Ion name="chevron-forward" size={16} color={c.ink3} />
                   </Row>
-                )}
+                ) : (
+                  <>
+                    {searching && results.length === 0 && (
+                      <View style={{ alignItems: 'center', paddingVertical: 28 }}>
+                        <ActivityIndicator color={c.pine} />
+                      </View>
+                    )}
 
-                {results.map((r, i) => (
-                  <Row key={r.id} onPress={() => pick(r)} padV={13} last={i === results.length - 1}>
-                    <View
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        backgroundColor: c.infoTint,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
+                    {results.map((r, i) => (
+                      <Row
+                        key={r.id}
+                        onPress={() =>
+                          stageItem({ source: 'ankiweb', id: r.id, name: r.name, deck: r })
+                        }
+                        padV={13}
+                        last={i === results.length - 1}
+                      >
+                        <View
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            backgroundColor: c.infoTint,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ion name="albums-outline" size={17} color={c.info} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text
+                            numberOfLines={1}
+                            style={[font('sans', 700), { fontSize: 14.5, color: c.ink }]}
+                          >
+                            {r.name}
+                          </Text>
+                          <View
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 }}
+                          >
+                            <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
+                              {r.notes.toLocaleString('en-US')} notes
+                            </Text>
+                            <Ion name="arrow-up" size={11} color={c.ink3} />
+                            <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
+                              {r.upvotes.toLocaleString('en-US')}
+                            </Text>
+                            {r.audio > 0 ? (
+                              <Ion name="volume-medium" size={12} color={c.ink3} />
+                            ) : null}
+                          </View>
+                        </View>
+                        <Ion name="chevron-forward" size={16} color={c.ink3} />
+                      </Row>
+                    ))}
+
+                    {!searching && results.length === 0 && (
+                      <View style={{ alignItems: 'center', paddingVertical: 26, paddingHorizontal: 16 }}>
+                        <Text
+                          style={[font('serif', 600), { fontSize: 17, color: c.ink, marginBottom: 4 }]}
+                        >
+                          No shared decks match
+                        </Text>
+                        <Text
+                          style={[
+                            font('sans', 400),
+                            { fontSize: 13, color: c.ink3, textAlign: 'center' },
+                          ]}
+                        >
+                          Try another search — or paste an AnkiWeb URL / deck ID.
+                        </Text>
+                      </View>
+                    )}
+
+                    <Text
+                      style={[
+                        font('sans', 400),
+                        { fontSize: 12.5, color: c.ink3, marginTop: 14, textAlign: 'center' },
+                      ]}
                     >
-                      <Ion name="albums-outline" size={17} color={c.info} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={[font('sans', 700), { fontSize: 14.5, color: c.ink }]}>
-                        {r.name}
-                      </Text>
-                      <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
-                        {r.cards.toLocaleString('en-US')} cards · {r.cat}
-                      </Text>
-                    </View>
-                    <Ion name="chevron-forward" size={16} color={c.ink3} />
-                  </Row>
-                ))}
-
-                {results.length === 0 && !pastedId && (
-                  <View style={{ alignItems: 'center', paddingVertical: 26, paddingHorizontal: 16 }}>
-                    <Text style={[font('serif', 600), { fontSize: 17, color: c.ink, marginBottom: 4 }]}>
-                      No shared decks match
+                      or paste an AnkiWeb URL / deck ID above
                     </Text>
-                    <Text style={[font('sans', 400), { fontSize: 13, color: c.ink3, textAlign: 'center' }]}>
-                      Try another search — or paste an AnkiWeb URL / deck ID.
-                    </Text>
-                  </View>
+                  </>
                 )}
-                <Text
-                  style={[
-                    font('sans', 400),
-                    { fontSize: 12.5, color: c.ink3, marginTop: 14, textAlign: 'center' },
-                  ]}
-                >
-                  or paste an AnkiWeb URL / deck ID above
-                </Text>
               </View>
             )}
 
@@ -430,7 +619,7 @@ export default function ImportScreen() {
                 { fontSize: 12.5, color: c.ink3, marginVertical: 12, marginHorizontal: 2 },
               ]}
             >
-              Anki scheduling is preserved — ease, intervals and due dates come along.
+              {previewNote}
             </Text>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
               <Btn kind="secondary" full style={{ flex: 1 }} onPress={() => setStage('idle')}>
@@ -439,8 +628,8 @@ export default function ImportScreen() {
               <Btn
                 full
                 style={{ flex: 1 }}
-                icon="cloud-download-outline"
-                onPress={() => setStage('importing')}
+                icon={chosen.source === 'ankiweb' ? 'cloud-download-outline' : 'download-outline'}
+                onPress={runImport}
               >
                 Import deck
               </Btn>
@@ -450,24 +639,34 @@ export default function ImportScreen() {
 
         {stage === 'importing' && chosen && (
           <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 10 }}>
-            <Ring value={prog} size={86} stroke={6}>
-              <Text style={[font('sans', 800), tnum, { fontSize: 19, color: c.ink }]}>{prog}%</Text>
-            </Ring>
+            <View
+              style={{
+                width: 86,
+                height: 86,
+                borderRadius: 999,
+                backgroundColor: c.pineTint,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <ActivityIndicator size="large" color={c.pine} />
+            </View>
             <Text
               style={[font('sans', 700), { fontSize: 15.5, color: c.ink, marginTop: 18, marginBottom: 4 }]}
             >
-              Importing {chosen.payload.length.toLocaleString('en-US')} cards…
+              {importPhase === 'download' ? 'Downloading deck…' : 'Importing…'}
             </Text>
-            <Text style={[font('sans', 400), { fontSize: 13, color: c.ink3, marginBottom: 22 }]}>
-              Keeping your Anki scheduling intact.
-            </Text>
-            <Btn
-              kind="quiet"
-              onPress={() => {
-                setStage('idle');
-                show('Import cancelled — nothing was written');
-              }}
+            <Text
+              style={[
+                font('sans', 400),
+                { fontSize: 13, color: c.ink3, marginBottom: 22, textAlign: 'center' },
+              ]}
             >
+              {importPhase === 'download'
+                ? `Fetching “${chosen.name}” from AnkiWeb.`
+                : 'Adding cards to your library.'}
+            </Text>
+            <Btn kind="quiet" onPress={cancelImport}>
               Cancel
             </Btn>
           </View>

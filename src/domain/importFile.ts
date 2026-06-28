@@ -8,8 +8,8 @@
  *      than pretend to import — the caller shows guidance to export CSV from Anki.
  *   2. parseImportCsv() — turn raw CSV text into ImportCardPayload[] (+ a deck name
  *      derived from the file name). The result is fed straight into the existing
- *      staged flow: the caller wraps { payload, name } into a SharedDeck and calls
- *      pick(), so preview → progress → done → "Study the new deck" is reused as-is.
+ *      staged flow: the caller stages { payload, name } as a 'file' import item,
+ *      so preview → progress → done → "Study the new deck" is reused as-is.
  *      importDeck() (DataContext) fills SRS defaults + lang for any field we omit.
  *
  * Constraints: no React, no I/O, no Date.now / Math.random — deterministic and
