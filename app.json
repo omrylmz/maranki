@@ -10,12 +10,19 @@
     "backgroundColor": "#F4F0E7",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.omrylmz.maranki"
+      "bundleIdentifier": "com.omrylmz.maranki",
+      "icon": {
+        "light": "./assets/images/icon.png",
+        "dark": "./assets/images/icon-dark.png",
+        "tinted": "./assets/images/icon-tinted.png"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#F4F0E7",
-        "foregroundImage": "./assets/images/android-icon-foreground.png"
+        "backgroundColor": "#136F63",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.omrylmz.maranki"
