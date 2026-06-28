@@ -236,6 +236,19 @@ export function isDue(card: Card, now: number): boolean {
   );
 }
 
+/**
+ * Does this deck carry real linguistic metadata (CEFR level, part of speech)?
+ *
+ * Only embedded (builtin) decks do. Imported decks get fabricated level/type
+ * defaults (A1 / noun) on import — purely to satisfy the non-null Card shape —
+ * so those values are noise and must NOT drive filters or badges. `!builtin`
+ * already means "imported" in the UI (the Study-screen pill), so builtin is the
+ * single source of truth for "this deck's level/type are meaningful".
+ */
+export function deckHasLinguistics(deck: Deck | null | undefined): boolean {
+  return !!deck?.builtin;
+}
+
 export function dayKeyOf(ms: number): string {
   const d = new Date(ms);
   const m = `${d.getMonth() + 1}`.padStart(2, '0');

@@ -200,7 +200,7 @@ const DECK_SEEDS: DeckSeed[] = [
     dueLearning: 1,
   },
   {
-    deck: { id: 'es-sentences', name: 'Spanish — Core Sentences', flag: '🇪🇸', lang: 'Spanish', level: null, builtin: false, active: true },
+    deck: { id: 'es-sentences', name: 'Spanish — Core Sentences', flag: '🇪🇸', lang: 'Spanish', level: null, builtin: true, active: true },
     specs: ES_SENTENCES,
     lang: 'es',
     mix: [4, 5, 1, 6],

@@ -26,7 +26,7 @@ import {
 } from '@/components/ui';
 import { collectionFilter } from '@/domain/queue';
 import { formatIntervalDays } from '@/domain/srs';
-import { Card, CardState, CefrLevel, displayState } from '@/domain/types';
+import { Card, CardState, CefrLevel, deckHasLinguistics, displayState } from '@/domain/types';
 import { useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { useSnackbar } from '@/store/SnackbarContext';
@@ -105,6 +105,15 @@ export default function BrowseScreen() {
 
   const now = useNow();
 
+  // Only embedded decks carry real level/type; imported decks fabricate them
+  // (A1 / noun) to satisfy the Card shape. Level filtering and the level badge
+  // therefore apply to embedded cards only — imported cards opt out entirely.
+  const linguisticDeckIds = useMemo(
+    () => new Set(state.decks.filter(deckHasLinguistics).map((d) => d.id)),
+    [state.decks],
+  );
+  const hasLinguisticCards = linguisticDeckIds.size > 0;
+
   const cards = useMemo(() => {
     let pool = state.cards;
     if (params.collectionId) {
@@ -122,7 +131,8 @@ export default function BrowseScreen() {
     if (chip === 'new') pool = pool.filter((x) => x.reps === 0);
     if (chip === 'fav') pool = pool.filter((x) => x.fav);
 
-    if (fLevels.length) pool = pool.filter((x) => fLevels.includes(x.level));
+    if (fLevels.length)
+      pool = pool.filter((x) => linguisticDeckIds.has(x.deckId) && fLevels.includes(x.level));
     if (fDecks.length) pool = pool.filter((x) => fDecks.includes(x.deckId));
     if (fStatus.length) {
       pool = pool.filter((x) => {
@@ -136,8 +146,14 @@ export default function BrowseScreen() {
     }
 
     const parsed = parseQuery(q);
-    if (parsed.level) pool = pool.filter((x) => x.level.toLowerCase() === parsed.level);
-    if (parsed.type) pool = pool.filter((x) => x.type.toLowerCase() === parsed.type);
+    if (parsed.level)
+      pool = pool.filter(
+        (x) => linguisticDeckIds.has(x.deckId) && x.level.toLowerCase() === parsed.level,
+      );
+    if (parsed.type)
+      pool = pool.filter(
+        (x) => linguisticDeckIds.has(x.deckId) && x.type.toLowerCase() === parsed.type,
+      );
     if (parsed.deck) {
       pool = pool.filter((x) => {
         const deck = state.decks.find((d) => d.id === x.deckId);
@@ -173,7 +189,7 @@ export default function BrowseScreen() {
         );
     }
     return sorted;
-  }, [state.cards, state.decks, state.collections, params.collectionId, chip, q, sort, fLevels, fStatus, fDecks, now]);
+  }, [state.cards, state.decks, state.collections, params.collectionId, chip, q, sort, fLevels, fStatus, fDecks, linguisticDeckIds, now]);
 
   const toggleSel = (id: string) =>
     setSel(sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
@@ -249,7 +265,7 @@ export default function BrowseScreen() {
               {item.tr}
             </Text>
           </View>
-          <LevelBadge level={item.level} />
+          {linguisticDeckIds.has(item.deckId) && <LevelBadge level={item.level} />}
           {item.fav ? (
             <Ion name="heart" size={16} color={c.danger} />
           ) : item.intervalDays > 0 && item.stepIndex === null ? (
@@ -322,8 +338,13 @@ export default function BrowseScreen() {
         )}
       </View>
       <Text style={[font('mono', 400), { fontSize: 11.5, color: c.ink3, marginTop: 8, marginHorizontal: 2 }]}>
-        try <Text style={{ color: c.pine }}>level:B1</Text> ·{' '}
-        <Text style={{ color: c.pine }}>type:verb</Text> ·{' '}
+        try{' '}
+        {hasLinguisticCards && (
+          <>
+            <Text style={{ color: c.pine }}>level:B1</Text> ·{' '}
+            <Text style={{ color: c.pine }}>type:verb</Text> ·{' '}
+          </>
+        )}
         <Text style={{ color: c.pine }}>{'deck:"Spanish"'}</Text>
       </Text>
 
@@ -505,14 +526,22 @@ export default function BrowseScreen() {
 
       {/* filter sheet — chips hold real state */}
       <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Filters">
-        <Overline style={{ marginBottom: 8 }}>Level</Overline>
-        <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
-          {LEVELS.map((l) => (
-            <Chip key={l} active={fLevels.includes(l)} onPress={() => setFLevels(toggleIn(fLevels, l))}>
-              {l}
-            </Chip>
-          ))}
-        </View>
+        {hasLinguisticCards && (
+          <>
+            <Overline style={{ marginBottom: 8 }}>Level</Overline>
+            <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
+              {LEVELS.map((l) => (
+                <Chip
+                  key={l}
+                  active={fLevels.includes(l)}
+                  onPress={() => setFLevels(toggleIn(fLevels, l))}
+                >
+                  {l}
+                </Chip>
+              ))}
+            </View>
+          </>
+        )}
         <Overline style={{ marginBottom: 8 }}>Status</Overline>
         <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
           {STATUS_FILTERS.map((s) => (
