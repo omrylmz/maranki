@@ -39,8 +39,10 @@ export interface Card {
   ex?: string;
   /** Example translation. */
   exTr?: string;
-  level: CefrLevel;
-  type: WordType;
+  /** CEFR level, or null when the source carries no such metadata (e.g. an import). */
+  level: CefrLevel | null;
+  /** Part of speech, or null when the source carries no such metadata (e.g. an import). */
+  type: WordType | null;
   lang: Lang;
   tags?: string[];
   fav?: boolean;
@@ -234,19 +236,6 @@ export function isDue(card: Card, now: number): boolean {
     !card.suspended &&
     (!card.buriedUntil || card.buriedUntil <= now)
   );
-}
-
-/**
- * Does this deck carry real linguistic metadata (CEFR level, part of speech)?
- *
- * Only embedded (builtin) decks do. Imported decks get fabricated level/type
- * defaults (A1 / noun) on import — purely to satisfy the non-null Card shape —
- * so those values are noise and must NOT drive filters or badges. `!builtin`
- * already means "imported" in the UI (the Study-screen pill), so builtin is the
- * single source of truth for "this deck's level/type are meaningful".
- */
-export function deckHasLinguistics(deck: Deck | null | undefined): boolean {
-  return !!deck?.builtin;
 }
 
 export function dayKeyOf(ms: number): string {

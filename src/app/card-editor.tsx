@@ -87,8 +87,8 @@ export default function CardEditorScreen() {
       ex: ex.trim() || undefined,
       exTr: exTr.trim() || undefined,
       ipa: ipa.trim() || undefined,
-      level: level ?? 'A1',
-      type: type ?? 'noun',
+      level,
+      type,
       deckId: deck,
       lang: langCode(deckObj?.lang ?? 'German'),
     };

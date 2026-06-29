@@ -24,17 +24,20 @@ import {
   Sheet,
   StateDot,
 } from '@/components/ui';
-import { collectionFilter } from '@/domain/queue';
+import {
+  filterBrowseCards,
+  STATUS_FILTERS,
+  type ChipScope,
+  type SortMode,
+  type StatusFilter,
+} from '@/domain/browseFilter';
 import { formatIntervalDays } from '@/domain/srs';
-import { Card, CardState, CefrLevel, deckHasLinguistics, displayState } from '@/domain/types';
+import { Card, CefrLevel, displayState } from '@/domain/types';
 import { useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { useSnackbar } from '@/store/SnackbarContext';
 import { font, TABBAR_HEIGHT, tnum } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
-
-type ChipScope = 'all' | 'due' | 'new' | 'fav';
-type SortMode = 'smart' | 'az' | 'newest' | 'hardest';
 
 const SORT_LABEL: Record<SortMode, string> = {
   smart: 'smart',
@@ -44,37 +47,6 @@ const SORT_LABEL: Record<SortMode, string> = {
 };
 const SORT_CYCLE: SortMode[] = ['smart', 'az', 'newest', 'hardest'];
 const LEVELS: CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
-const STATUS_FILTERS = ['New', 'Learning', 'Due', 'Mastered', 'Suspended', 'Flagged'] as const;
-type StatusFilter = (typeof STATUS_FILTERS)[number];
-
-/** Parse `level:B1 type:verb deck:"Spanish — Travel"` tokens from a query. */
-function parseQuery(q: string): {
-  text: string;
-  level?: string;
-  type?: string;
-  deck?: string;
-} {
-  let text = q;
-  const grab = (key: string): string | undefined => {
-    const re = new RegExp(`${key}:(?:"([^"]+)"|(\\S+))`, 'i');
-    const m = text.match(re);
-    if (!m) return undefined;
-    text = text.replace(m[0], '').trim();
-    return (m[1] ?? m[2]).toLowerCase();
-  };
-  const level = grab('level');
-  const type = grab('type');
-  const deck = grab('deck');
-  return { text: text.trim().toLowerCase(), level, type, deck };
-}
-
-const STATE_PRIORITY: Record<CardState, number> = {
-  due: 0,
-  learning: 1,
-  new: 2,
-  review: 3,
-  mastered: 4,
-};
 
 export default function BrowseScreen() {
   const c = useColors();
@@ -105,91 +77,34 @@ export default function BrowseScreen() {
 
   const now = useNow();
 
-  // Only embedded decks carry real level/type; imported decks fabricate them
-  // (A1 / noun) to satisfy the Card shape. Level filtering and the level badge
-  // therefore apply to embedded cards only — imported cards opt out entirely.
-  const linguisticDeckIds = useMemo(
-    () => new Set(state.decks.filter(deckHasLinguistics).map((d) => d.id)),
-    [state.decks],
+  // Level/type metadata is per-card and nullable (imports leave it null), so
+  // the level badge, the level filter and the level:/type: search tokens gate
+  // on the card carrying a value — not on deck provenance.
+  const hasLinguistic = useMemo(() => state.cards.some((x) => x.level != null), [state.cards]);
+
+  const cards = useMemo(
+    () =>
+      filterBrowseCards(
+        state.cards,
+        state.decks,
+        state.collections,
+        { collectionId: params.collectionId, chip, q, sort, fLevels, fStatus, fDecks },
+        now,
+      ),
+    [
+      state.cards,
+      state.decks,
+      state.collections,
+      params.collectionId,
+      chip,
+      q,
+      sort,
+      fLevels,
+      fStatus,
+      fDecks,
+      now,
+    ],
   );
-  const hasLinguisticCards = linguisticDeckIds.size > 0;
-
-  const cards = useMemo(() => {
-    let pool = state.cards;
-    if (params.collectionId) {
-      const col = state.collections.find((x) => x.id === params.collectionId);
-      if (col) {
-        const f = collectionFilter(col.query);
-        pool = pool.filter((x) => f(x, now));
-      }
-    }
-    if (chip === 'due')
-      pool = pool.filter((x) => {
-        const s = displayState(x, now);
-        return s === 'due' || s === 'learning';
-      });
-    if (chip === 'new') pool = pool.filter((x) => x.reps === 0);
-    if (chip === 'fav') pool = pool.filter((x) => x.fav);
-
-    if (fLevels.length)
-      pool = pool.filter((x) => linguisticDeckIds.has(x.deckId) && fLevels.includes(x.level));
-    if (fDecks.length) pool = pool.filter((x) => fDecks.includes(x.deckId));
-    if (fStatus.length) {
-      pool = pool.filter((x) => {
-        const s = displayState(x, now);
-        return fStatus.some((f) => {
-          if (f === 'Suspended') return !!x.suspended;
-          if (f === 'Flagged') return !!x.flagged;
-          return s === f.toLowerCase();
-        });
-      });
-    }
-
-    const parsed = parseQuery(q);
-    if (parsed.level)
-      pool = pool.filter(
-        (x) => linguisticDeckIds.has(x.deckId) && x.level.toLowerCase() === parsed.level,
-      );
-    if (parsed.type)
-      pool = pool.filter(
-        (x) => linguisticDeckIds.has(x.deckId) && x.type.toLowerCase() === parsed.type,
-      );
-    if (parsed.deck) {
-      pool = pool.filter((x) => {
-        const deck = state.decks.find((d) => d.id === x.deckId);
-        return deck?.name.toLowerCase().includes(parsed.deck!);
-      });
-    }
-    if (parsed.text) {
-      const s = parsed.text;
-      pool = pool.filter(
-        (x) =>
-          x.word.toLowerCase().includes(s) ||
-          x.tr.toLowerCase().includes(s) ||
-          (x.ex ?? '').toLowerCase().includes(s),
-      );
-    }
-
-    const sorted = [...pool];
-    switch (sort) {
-      case 'az':
-        sorted.sort((a, b) => a.base.localeCompare(b.base));
-        break;
-      case 'newest':
-        sorted.sort((a, b) => b.createdAt - a.createdAt);
-        break;
-      case 'hardest':
-        sorted.sort((a, b) => a.ease - b.ease);
-        break;
-      default:
-        sorted.sort(
-          (a, b) =>
-            STATE_PRIORITY[displayState(a, now)] - STATE_PRIORITY[displayState(b, now)] ||
-            a.due - b.due,
-        );
-    }
-    return sorted;
-  }, [state.cards, state.decks, state.collections, params.collectionId, chip, q, sort, fLevels, fStatus, fDecks, linguisticDeckIds, now]);
 
   const toggleSel = (id: string) =>
     setSel(sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
@@ -265,7 +180,7 @@ export default function BrowseScreen() {
               {item.tr}
             </Text>
           </View>
-          {linguisticDeckIds.has(item.deckId) && <LevelBadge level={item.level} />}
+          {item.level != null && <LevelBadge level={item.level} />}
           {item.fav ? (
             <Ion name="heart" size={16} color={c.danger} />
           ) : item.intervalDays > 0 && item.stepIndex === null ? (
@@ -339,7 +254,7 @@ export default function BrowseScreen() {
       </View>
       <Text style={[font('mono', 400), { fontSize: 11.5, color: c.ink3, marginTop: 8, marginHorizontal: 2 }]}>
         try{' '}
-        {hasLinguisticCards && (
+        {hasLinguistic && (
           <>
             <Text style={{ color: c.pine }}>level:B1</Text> ·{' '}
             <Text style={{ color: c.pine }}>type:verb</Text> ·{' '}
@@ -526,7 +441,7 @@ export default function BrowseScreen() {
 
       {/* filter sheet — chips hold real state */}
       <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Filters">
-        {hasLinguisticCards && (
+        {hasLinguistic && (
           <>
             <Overline style={{ marginBottom: 8 }}>Level</Overline>
             <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>

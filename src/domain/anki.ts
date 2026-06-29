@@ -239,8 +239,8 @@ export function mapAnkiNote(
     const card: ImportCardPayload = {
       word,
       tr: stripHtml(clozeAnswers(src)),
-      level: 'A1',
-      type: 'noun',
+      level: null,
+      type: null,
     };
     const ex = ci >= 0 ? stripHtml(values[ci] || '') : '';
     if (ex) card.ex = ex;
@@ -286,8 +286,8 @@ export function mapAnkiNote(
   const card: ImportCardPayload = {
     word,
     tr: ti >= 0 ? stripHtml(values[ti] || '') : '',
-    level: li >= 0 ? clampLevel(stripHtml(values[li] || '')) : 'A1',
-    type: 'noun',
+    level: li >= 0 ? clampLevel(stripHtml(values[li] || '')) : null,
+    type: null,
   };
   const ex = ei >= 0 ? stripHtml(values[ei] || '') : '';
   const ipa = ii >= 0 ? stripHtml(values[ii] || '') : '';

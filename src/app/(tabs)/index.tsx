@@ -213,7 +213,7 @@ export default function HomeScreen() {
                   }}
                 >
                   <Overline style={{ letterSpacing: 11 * 0.11 }}>Up first</Overline>
-                  <LevelBadge level={first.level} />
+                  {first.level != null && <LevelBadge level={first.level} />}
                 </View>
                 <Text
                   numberOfLines={2}

@@ -116,6 +116,7 @@ export default function StatsScreen() {
 
     // mastery by CEFR level (only levels present)
     const byLevel = LEVELS.map((l) => {
+      // null-level (imported) cards never equal a CEFR level, so they're intentionally excluded
       const pool = state.cards.filter((x) => x.level === l);
       const m = pool.filter((x) => x.reps > 0 && x.stepIndex === null && x.intervalDays >= 21).length;
       return { level: l, count: pool.length, pct: pool.length ? Math.round((m / pool.length) * 100) : 0 };

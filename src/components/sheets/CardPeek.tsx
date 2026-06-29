@@ -13,12 +13,13 @@ import {
   Ion,
   LevelBadge,
   Pill,
+  TypePill,
   Sheet,
   StateBadge,
 } from '@/components/ui';
 import { speakWord } from '@/domain/speech';
 import { formatIntervalDays } from '@/domain/srs';
-import { Card, deckHasLinguistics, displayState, MASTERED_INTERVAL_DAYS } from '@/domain/types';
+import { Card, displayState, MASTERED_INTERVAL_DAYS } from '@/domain/types';
 import { useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { useSnackbar } from '@/store/SnackbarContext';
@@ -33,14 +34,12 @@ interface CardPeekProps {
 export function CardPeek({ card, onClose }: CardPeekProps) {
   const c = useColors();
   const router = useRouter();
-  const { state: data, actions } = useData();
+  const { actions } = useData();
   const { show } = useSnackbar();
   const now = useNow();
 
   if (!card) return null;
   const state = displayState(card, now);
-  // Imported decks fabricate level/type — show those badges for embedded cards only.
-  const linguistic = deckHasLinguistics(data.decks.find((d) => d.id === card.deckId));
 
   const quick = (label: string, icon: string, active: boolean, onPress: () => void) => (
     <Pressable
@@ -121,8 +120,8 @@ export function CardPeek({ card, onClose }: CardPeekProps) {
         }}
       >
         <StateBadge state={state} label={state} />
-        {linguistic && <LevelBadge level={card.level} />}
-        {linguistic && <Pill>{card.type}</Pill>}
+        {card.level != null && <LevelBadge level={card.level} />}
+        {card.type != null && <TypePill type={card.type} />}
         {card.intervalDays > 0 && card.stepIndex === null ? (
           <Pill mono>next in {formatIntervalDays(card.intervalDays)}</Pill>
         ) : null}

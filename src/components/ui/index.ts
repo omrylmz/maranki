@@ -9,6 +9,7 @@ export {
   StateBadge,
   Chip,
   Pill,
+  TypePill,
   StreakChip,
   FlagSq,
   DeckTag,
