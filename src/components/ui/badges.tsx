@@ -212,3 +212,92 @@ export function FlagSq({ flag, size = 38 }: { flag: string; size?: number }) {
     </View>
   );
 }
+
+/* ----------------------------------------------------------- deck provenance */
+// Single source of truth for "curated vs imported", shown on every deck surface
+// (Home, Study, peek). Driven by deck.builtin, NOT the flag emoji: AnkiWeb
+// imports keep a country flag, so the emoji can't signal origin. Curated reads
+// pine (the brand); imported reads info-blue. Glyphs: leaf (evergreen → curated)
+// and download (echoes the import action → imported).
+
+const PROVENANCE = {
+  curated: { glyph: 'leaf', label: 'Curated' },
+  imported: { glyph: 'download', label: 'Imported' },
+} as const;
+
+/** The explicit half: a tiny labeled chip. Pair with <DeckTile> for the glyph. */
+export function DeckTag({ builtin, label }: { builtin: boolean; label?: string }) {
+  const c = useColors();
+  const p = builtin ? PROVENANCE.curated : PROVENANCE.imported;
+  const fg = builtin ? c.pine : c.info;
+  const bg = builtin ? c.pineTint : c.infoTint;
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: bg,
+        paddingVertical: 2.5,
+        paddingHorizontal: 7,
+        borderRadius: 999,
+        alignSelf: 'flex-start',
+      }}
+    >
+      <Ion name={p.glyph} size={9.5} color={fg} />
+      <Text style={[font('sans', 800), { fontSize: 10.5, color: fg, letterSpacing: 0.2 }]}>
+        {label ?? p.label}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Deck identity tile = flag square + a provenance seal in the corner. The seal
+ * is the glanceable half (no text needed). `ring` should match the surface
+ * BEHIND the tile so the seal reads as a sticker — paper on list rows (default),
+ * surface inside a sheet.
+ */
+export function DeckTile({
+  flag,
+  builtin,
+  size = 38,
+  ring,
+  seal = true,
+}: {
+  flag: string;
+  builtin: boolean;
+  size?: number;
+  ring?: string;
+  seal?: boolean;
+}) {
+  const c = useColors();
+  const d = Math.max(15, Math.round(size * 0.44));
+  const p = builtin ? PROVENANCE.curated : PROVENANCE.imported;
+  const fg = builtin ? c.pine : c.info;
+  const bg = builtin ? c.pineTint : c.infoTint;
+  return (
+    <View style={{ width: size, height: size }}>
+      <FlagSq flag={flag} size={size} />
+      {seal && (
+        <View
+          style={{
+            position: 'absolute',
+            right: -3,
+            bottom: -3,
+            width: d,
+            height: d,
+            borderRadius: 999,
+            backgroundColor: bg,
+            borderWidth: 2,
+            borderColor: ring ?? c.paper,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ion name={p.glyph} size={Math.round(d * 0.56)} color={fg} />
+        </View>
+      )}
+    </View>
+  );
+}

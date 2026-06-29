@@ -15,7 +15,8 @@ import { StreakSheet } from '@/components/sheets/StreakSheet';
 import {
   Bar,
   Btn,
-  FlagSq,
+  DeckTag,
+  DeckTile,
   IconBtn,
   Ion,
   LevelBadge,
@@ -389,14 +390,17 @@ export default function HomeScreen() {
                 last={i === activeDecks.length - 1}
                 padV={15}
               >
-                <FlagSq flag={d.flag} />
+                <DeckTile flag={d.flag} builtin={d.builtin} />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text
-                    numberOfLines={1}
-                    style={[font('sans', 700), { fontSize: 15.5, color: c.ink }]}
-                  >
-                    {d.name}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={[font('sans', 700), { fontSize: 15.5, color: c.ink, flexShrink: 1 }]}
+                    >
+                      {d.name}
+                    </Text>
+                    <DeckTag builtin={d.builtin} />
+                  </View>
                   <Text
                     style={[
                       font('sans', 400),

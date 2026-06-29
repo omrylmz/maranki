@@ -15,12 +15,12 @@ import { PeekSheet, PeekTarget } from '@/components/sheets/PeekSheet';
 import {
   Btn,
   CardBox,
+  DeckTag,
+  DeckTile,
   FAB,
-  FlagSq,
   IconBtn,
   Ion,
   Page,
-  Pill,
   Row,
   ScreenHead,
   SectionHead,
@@ -127,7 +127,7 @@ export default function StudyScreen() {
                 padV={14}
                 last={i === active.length - 1 && !paused.length}
               >
-                <FlagSq flag={d.flag} size={36} />
+                <DeckTile flag={d.flag} size={36} builtin={d.builtin} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                     <Text
@@ -136,11 +136,7 @@ export default function StudyScreen() {
                     >
                       {d.name}
                     </Text>
-                    {!d.builtin && (
-                      <Pill fg={c.info} bg={c.infoTint}>
-                        imported
-                      </Pill>
-                    )}
+                    <DeckTag builtin={d.builtin} />
                   </View>
                   <Text
                     style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3, marginTop: 2 }]}
@@ -195,14 +191,17 @@ export default function StudyScreen() {
                       last={i === paused.length - 1}
                       style={{ opacity: 0.75 }}
                     >
-                      <FlagSq flag={d.flag} size={34} />
+                      <DeckTile flag={d.flag} size={34} builtin={d.builtin} />
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text
-                          numberOfLines={1}
-                          style={[font('sans', 700), { fontSize: 14.5, color: c.ink2 }]}
-                        >
-                          {d.name}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                          <Text
+                            numberOfLines={1}
+                            style={[font('sans', 700), { fontSize: 14.5, color: c.ink2, flexShrink: 1 }]}
+                          >
+                            {d.name}
+                          </Text>
+                          <DeckTag builtin={d.builtin} />
+                        </View>
                         <Text style={[font('sans', 400), tnum, { fontSize: 12, color: c.ink3 }]}>
                           {s.total.toLocaleString('en-US')} cards
                         </Text>

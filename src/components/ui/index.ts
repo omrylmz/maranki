@@ -11,6 +11,8 @@ export {
   Pill,
   StreakChip,
   FlagSq,
+  DeckTag,
+  DeckTile,
 } from './badges';
 export {
   Overline,
