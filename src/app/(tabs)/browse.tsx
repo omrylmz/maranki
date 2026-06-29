@@ -11,8 +11,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AddDeckSheet } from '@/components/sheets/AddDeckSheet';
 import { CardPeek } from '@/components/sheets/CardPeek';
-import { CreateSheet } from '@/components/sheets/CreateSheet';
 import {
   Btn,
   Chip,
@@ -79,8 +79,11 @@ export default function BrowseScreen() {
 
   // Level/type metadata is per-card and nullable (imports leave it null), so
   // the level badge, the level filter and the level:/type: search tokens gate
-  // on the card carrying a value — not on deck provenance.
-  const hasLinguistic = useMemo(() => state.cards.some((x) => x.level != null), [state.cards]);
+  // on the card carrying a value — not on deck provenance. Level and type are
+  // populated independently (a CSV may carry one column and not the other), so
+  // the Level filter chips and each search hint gate on their own axis.
+  const hasLevel = useMemo(() => state.cards.some((x) => x.level != null), [state.cards]);
+  const hasType = useMemo(() => state.cards.some((x) => x.type != null), [state.cards]);
 
   const cards = useMemo(
     () =>
@@ -254,9 +257,13 @@ export default function BrowseScreen() {
       </View>
       <Text style={[font('mono', 400), { fontSize: 11.5, color: c.ink3, marginTop: 8, marginHorizontal: 2 }]}>
         try{' '}
-        {hasLinguistic && (
+        {hasLevel && (
           <>
             <Text style={{ color: c.pine }}>level:B1</Text> ·{' '}
+          </>
+        )}
+        {hasType && (
+          <>
             <Text style={{ color: c.pine }}>type:verb</Text> ·{' '}
           </>
         )}
@@ -437,11 +444,11 @@ export default function BrowseScreen() {
       )}
 
       <CardPeek card={peek} onClose={() => setPeek(null)} />
-      <CreateSheet open={createOpen} onClose={() => setCreateOpen(false)} />
+      <AddDeckSheet open={createOpen} onClose={() => setCreateOpen(false)} scope="curated" />
 
       {/* filter sheet — chips hold real state */}
       <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Filters">
-        {hasLinguistic && (
+        {hasLevel && (
           <>
             <Overline style={{ marginBottom: 8 }}>Level</Overline>
             <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>

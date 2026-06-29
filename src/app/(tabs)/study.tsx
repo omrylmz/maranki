@@ -10,7 +10,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CreateSheet } from '@/components/sheets/CreateSheet';
+import { AddDeckSheet } from '@/components/sheets/AddDeckSheet';
 import { PeekSheet, PeekTarget } from '@/components/sheets/PeekSheet';
 import {
   Btn,
@@ -281,7 +281,7 @@ export default function StudyScreen() {
 
       <FAB onPress={() => setCreateOpen(true)} bottom={TABBAR_HEIGHT + insets.bottom + 18} />
       <PeekSheet target={peek} onClose={() => setPeek(null)} />
-      <CreateSheet open={createOpen} onClose={() => setCreateOpen(false)} />
+      <AddDeckSheet open={createOpen} onClose={() => setCreateOpen(false)} scope="all" />
     </>
   );
 }

@@ -1,0 +1,110 @@
+/**
+ * The curated deck catalog — the single source of truth (shared with seed.ts)
+ * for the app's built-in, filter-ready decks. The "Add a deck" sheet reads
+ * CURATED_DECKS to offer them; DataContext.addCatalogDeck materializes a chosen
+ * entry into a real Deck + brand-new Cards.
+ *
+ * Vocabulary is defined ONCE: the corpora and DECK_SEEDS live in seed.ts (which
+ * also produces the lived-in first-boot seed). Here we only re-shape those same
+ * built-in seeds into a catalog view, plus a card builder that starts every
+ * card from scratch (reps 0, due now) rather than the seed's spread of SRS
+ * states. No vocabulary is authored here.
+ */
+import { DECK_SEEDS, splitArticle, type Spec } from './seed';
+import { Card, CefrLevel, Deck, DEFAULT_SRS, Lang } from './types';
+
+export type { Spec };
+
+/** A curated deck as offered in the "Add a deck" sheet. */
+export interface CatalogDeck {
+  id: string;
+  name: string;
+  flag: string;
+  /** Deck.lang — the human-readable display string, e.g. 'German'. */
+  deckLang: string;
+  /** Per-card language code, e.g. 'de'. */
+  lang: Lang;
+  level: CefrLevel | null;
+  specs: Spec[];
+}
+
+/** The app's built-in, filter-ready decks, derived from the shared seed defs. */
+export const CURATED_DECKS: CatalogDeck[] = DECK_SEEDS.filter((s) => s.deck.builtin).map((s) => ({
+  id: s.deck.id,
+  name: s.deck.name,
+  flag: s.deck.flag,
+  deckLang: s.deck.lang,
+  lang: s.lang,
+  level: s.deck.level,
+  specs: s.specs,
+}));
+
+/* Card-id minting: a uid('c')-style monotonic counter that mirrors
+   DataContext's uid(). The "cat" infix keeps these ids provably disjoint from
+   DataContext's `c-<t>-<n>` ids (numeric tail) and the seed's `<deckId>-<n>`
+   ids, so re-adding a previously deleted curated deck can never collide with an
+   existing card. */
+let catalogCardCounter = 0;
+function mintCatalogCardId(): string {
+  catalogCardCounter += 1;
+  return `c-${Date.now().toString(36)}-cat${catalogCardCounter}`;
+}
+
+/**
+ * Materialize a catalog entry's specs into BRAND-NEW cards (reps 0, due now) —
+ * unlike the seed, which spreads cards across SRS states for a lived-in look.
+ * Linguistics (level/type) are copied through non-null, which is precisely what
+ * makes these cards Library-filterable.
+ *
+ * `mintId` defaults to the local collision-safe minter; a caller may inject its
+ * own id source (e.g. DataContext's uid) without changing the result shape.
+ */
+export function buildCatalogCards(
+  entry: CatalogDeck,
+  now: number,
+  mintId: () => string = mintCatalogCardId,
+): Card[] {
+  return entry.specs.map((spec, i) => {
+    const [word, tr, ipa, ex, exTr, level, type] = spec;
+    const { article, base } = splitArticle(word);
+    return {
+      id: mintId(),
+      deckId: entry.id,
+      word,
+      article,
+      base,
+      tr,
+      ipa,
+      ex,
+      exTr,
+      level,
+      type,
+      lang: entry.lang,
+      fav: false,
+      flagged: false,
+      suspended: false,
+      buriedUntil: null,
+      ease: DEFAULT_SRS.startingEase,
+      intervalDays: 0,
+      stepIndex: null,
+      reps: 0,
+      lapses: 0,
+      due: now,
+      createdAt: now + i,
+      lastReviewedAt: null,
+    };
+  });
+}
+
+/**
+ * Pure decision behind addCatalogDeck, extracted so the idempotency rules are
+ * unit-testable:
+ *  - 'noop'     the deck already exists and is active — nothing to do.
+ *  - 'activate' the deck exists but is paused — flip it back on (rejoin queue).
+ *  - 'create'   no such deck — materialize it fresh.
+ */
+export function catalogAddPlan(decks: Deck[], id: string): 'noop' | 'activate' | 'create' {
+  const existing = decks.find((d) => d.id === id);
+  if (!existing) return 'create';
+  return existing.active ? 'noop' : 'activate';
+}

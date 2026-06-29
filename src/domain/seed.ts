@@ -33,7 +33,7 @@ function lcg(seed: number) {
   };
 }
 
-type Spec = [
+export type Spec = [
   word: string,
   tr: string,
   ipa: string,
@@ -45,7 +45,7 @@ type Spec = [
 
 const ARTICLES = ['der', 'die', 'das', 'el', 'la', 'los', 'las', 'le', 'la', 'les'];
 
-function splitArticle(word: string): { article: string | null; base: string } {
+export function splitArticle(word: string): { article: string | null; base: string } {
   const sp = word.indexOf(' ');
   if (sp > 0) {
     const head = word.slice(0, sp);
@@ -182,7 +182,7 @@ interface DeckSeed {
   dueLearning: number;
 }
 
-const DECK_SEEDS: DeckSeed[] = [
+export const DECK_SEEDS: DeckSeed[] = [
   {
     deck: { id: 'de-everyday', name: 'German — Everyday', flag: '🇩🇪', lang: 'German', level: 'A1', builtin: true, active: true },
     specs: DE_EVERYDAY,
