@@ -508,7 +508,7 @@ export default function HomeScreen() {
                         },
                       ]}
                     >
-                      due
+                      ready
                     </Text>
                   </Pressable>
                 ) : (
