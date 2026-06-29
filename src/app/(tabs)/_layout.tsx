@@ -10,7 +10,7 @@ import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Ion, SnackbarHost } from '@/components/ui';
-import { computeReady } from '@/domain/queue';
+import { activeCardPool, computeReady } from '@/domain/queue';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { font, TABBAR_HEIGHT } from '@/theme/tokens';
@@ -47,10 +47,7 @@ function MarankiTabBar({ state, navigation }: TabBarProps) {
   const now = useNow();
   const studyDue = useMemo(() => {
     return computeReady(
-      data.cards.filter((card) => {
-        const deck = data.decks.find((d) => d.id === card.deckId);
-        return deck?.active !== false;
-      }),
+      activeCardPool(data.cards, data.decks),
       data.settings.srs,
       normalizedDayDone(data.person, now),
       now,

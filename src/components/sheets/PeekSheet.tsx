@@ -8,7 +8,7 @@ import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
 
 import { Btn, DeckTag, DeckTile, Ion, SegBar, Sheet } from '@/components/ui';
-import { collectionStats, deckStats } from '@/domain/queue';
+import { activeCardPool, collectionStats, deckStats } from '@/domain/queue';
 import { Collection, Deck } from '@/domain/types';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
@@ -54,10 +54,28 @@ export function PeekSheet({ target, onClose }: PeekSheetProps) {
         normalizedDayDone(state.person, now),
         now,
       );
-      return { name: target.deck.name, count: s.total, due: s.due, stats: s };
+      return {
+        name: target.deck.name,
+        count: s.total,
+        due: s.due,
+        sessionCount: s.sessionCount,
+        stats: s,
+      };
     }
-    const s = collectionStats(state.cards, target.collection, now);
-    return { name: target.collection.name, count: s.count, due: s.due, stats: null };
+    const s = collectionStats(
+      activeCardPool(state.cards, state.decks),
+      target.collection,
+      state.settings.srs,
+      normalizedDayDone(state.person, now),
+      now,
+    );
+    return {
+      name: target.collection.name,
+      count: s.count,
+      due: s.due,
+      sessionCount: s.sessionCount,
+      stats: null,
+    };
   }, [target, state, now]);
 
   if (!target || !info) return null;
@@ -162,7 +180,7 @@ export function PeekSheet({ target, onClose }: PeekSheetProps) {
 
       <View style={{ gap: 10, marginTop: 18 }}>
         <Btn full size="lg" icon="play" onPress={() => study(info.due === 0)}>
-          {info.due > 0 ? `Study ${info.due} due` : 'Nothing due — study ahead'}
+          {info.due > 0 ? `Study ${info.sessionCount}` : 'Nothing due — study ahead'}
         </Btn>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Btn kind="secondary" icon="search" onPress={browse} style={{ flex: 1 }} full>
