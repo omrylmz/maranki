@@ -39,14 +39,16 @@ import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function AppStack() {
-  const { colors, resolved } = useTheme();
+  const { colors, resolved, hydrated } = useTheme();
   const { ready, state } = useData();
   const router = useRouter();
   const tourShown = useRef(false);
 
   useEffect(() => {
-    if (ready) SplashScreen.hideAsync().catch(() => {});
-  }, [ready]);
+    // Wait for BOTH the data layer and the theme preference, so the first frame
+    // shown is the real palette — no light-flash before a dark preference (L21).
+    if (ready && hydrated) SplashScreen.hideAsync().catch(() => {});
+  }, [ready, hydrated]);
 
   // language-first onboarding on first boot (F1) — and again after a factory
   // reset, which flips onboarded back to false. tourShown dedupes a single
@@ -101,7 +103,7 @@ function AppStack() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Newsreader_400Regular,
     Newsreader_400Regular_Italic,
     Newsreader_500Medium,
@@ -119,7 +121,10 @@ export default function RootLayout() {
     SplineSansMono_600SemiBold,
   });
 
-  if (!fontsLoaded) return null;
+  // Proceed on a font-load ERROR too (OS falls back to system fonts) — otherwise
+  // a CDN failure leaves fontsLoaded false forever and the app hangs on a blank
+  // splash (L5).
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <ThemeProvider>
