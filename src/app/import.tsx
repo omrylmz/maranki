@@ -37,6 +37,7 @@ import { ApkgError, apkgErrorMessage, parseApkg } from '@/domain/importApkg';
 import { detectImportKind, parseImportCsv } from '@/domain/importFile';
 import { ImportCardPayload } from '@/domain/importSamples';
 import { Deck } from '@/domain/types';
+import { inferLang, LANG_FLAGS } from '@/domain/words';
 import { useData } from '@/store/DataContext';
 import { useSnackbar } from '@/store/SnackbarContext';
 import { font, tnum } from '@/theme/tokens';
@@ -171,7 +172,10 @@ export default function ImportScreen() {
           show('No cards found in that file.');
           return;
         }
-        stageItem({ source: 'file', name, flag: '📄', lang: 'German', payload });
+        // Infer the language from the deck/file name so TTS matches the words,
+        // instead of forcing German on every import (H6).
+        const lang = inferLang([name]);
+        stageItem({ source: 'file', name, flag: LANG_FLAGS[lang] ?? '📄', lang, payload });
       };
 
       // Read the raw bytes ONCE and classify by magic. Android SAF often returns
@@ -246,7 +250,8 @@ export default function ImportScreen() {
         const parsed = await parseApkg(bytes, chosen.name);
         if (ctrl.signal.aborted || !mountedRef.current) return;
         payload = parsed.payload;
-        deckFields = { name: parsed.name, flag: '🇩🇪', lang: 'German' };
+        const lang = inferLang([parsed.name, chosen.name]);
+        deckFields = { name: parsed.name, flag: LANG_FLAGS[lang] ?? '🇩🇪', lang };
       } else {
         payload = chosen.payload;
         deckFields = { name: chosen.name, flag: chosen.flag, lang: chosen.lang };
@@ -257,6 +262,17 @@ export default function ImportScreen() {
       // a late Cancel can't interleave between the check and the write.
       const have = new Set(state.cards.map((x) => x.word.toLowerCase()));
       const fresh = payload.filter((p) => !have.has(p.word.toLowerCase()));
+
+      // Every word is already in the library — don't create a phantom 0-card deck
+      // with a dead "Study the new cards" CTA. Say so and stay on the preview (M11).
+      if (fresh.length === 0) {
+        if (!mountedRef.current) return;
+        setImportPhase(null);
+        setStage('preview');
+        show('Nothing new to import — every word is already in your library.');
+        return;
+      }
+
       const deck = actions.importDeck(deckFields, fresh);
 
       if (!mountedRef.current) return;

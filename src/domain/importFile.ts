@@ -131,42 +131,57 @@ function looksBinary(s: string): boolean {
 const DELIMITERS = [',', ';', '\t'] as const;
 type Delimiter = (typeof DELIMITERS)[number];
 
-/** First line carrying non-whitespace — used only to sniff the delimiter. */
-function firstContentLine(text: string): string {
-  const lines = text.split(/\r\n|\r|\n/);
-  for (const line of lines) {
-    if (line.trim() !== '') return line;
+/** Up to `n` leading non-blank lines, rejoined — the delimiter-sniffing sample. */
+function sampleLines(text: string, n: number): string {
+  const out: string[] = [];
+  for (const line of text.split(/\r\n|\r|\n/)) {
+    if (line.trim() === '') continue;
+    out.push(line);
+    if (out.length >= n) break;
   }
-  return '';
+  return out.join('\n');
+}
+
+/** Most frequent value in a non-empty list (ties: first seen). */
+function modeOf(nums: number[]): number {
+  const freq = new Map<number, number>();
+  let mode = nums[0] ?? 0;
+  let modeCount = 0;
+  for (const v of nums) {
+    const c = (freq.get(v) ?? 0) + 1;
+    freq.set(v, c);
+    if (c > modeCount) {
+      modeCount = c;
+      mode = v;
+    }
+  }
+  return mode;
 }
 
 /**
- * Pick the delimiter by counting candidates OUTSIDE quotes on the header line.
- * Ties resolve in DELIMITERS order (comma, then semicolon, then tab); an
- * all-zero line (single column) falls back to comma.
+ * Pick the delimiter by running the REAL tokeniser (splitCsvRows) over the first
+ * several content lines and scoring each candidate by how many columns it makes
+ * AND how uniformly — a real table is wide and consistent. Sniffing one line
+ * misreads a single-column header or a comma hiding inside one quoted cell;
+ * sampling many lines and sharing splitCsvRows means the sniffer and the parser
+ * can never disagree about quoting. A file no candidate splits (single column)
+ * falls back to comma.
  */
-export function detectDelimiter(headerLine: string): Delimiter {
-  const counts: Record<Delimiter, number> = { ',': 0, ';': 0, '\t': 0 };
-  let inQuotes = false;
-  for (let i = 0; i < headerLine.length; i++) {
-    const ch = headerLine[i];
-    if (ch === '"') {
-      if (inQuotes && headerLine[i + 1] === '"') {
-        i++; // escaped quote inside a quoted field
-        continue;
-      }
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (!inQuotes && (ch === ',' || ch === ';' || ch === '\t')) {
-      counts[ch as Delimiter]++;
-    }
-  }
+export function detectDelimiter(text: string): Delimiter {
+  const sample = sampleLines(text, 10);
+  if (sample === '') return ',';
   let best: Delimiter = ',';
-  let bestCount = -1;
+  let bestScore = -1;
   for (const d of DELIMITERS) {
-    if (counts[d] > bestCount) {
-      bestCount = counts[d];
+    const rows = splitCsvRows(sample, d).filter((r) => r.some((cell) => cell.trim() !== ''));
+    if (rows.length === 0) continue;
+    const widths = rows.map((r) => r.length);
+    if (Math.max(...widths) < 2) continue; // this delimiter splits nothing → not it
+    const modal = modeOf(widths);
+    const consistency = widths.filter((w) => w === modal).length / widths.length;
+    const score = modal + consistency; // favour more columns AND uniform width
+    if (score > bestScore) {
+      bestScore = score;
       best = d;
     }
   }
@@ -285,9 +300,46 @@ const HEADER_FIRST_CELLS = new Set<string>([
   'wort',
 ]);
 
-/** A row is a header iff its first cell reads like "Word" / "Front" / "Term". */
+/** Header labels expected in a SECOND column — the corroborating signal. */
+const HEADER_OTHER_CELLS = new Set<string>([
+  'translation',
+  'translations',
+  'meaning',
+  'meanings',
+  'definition',
+  'back',
+  'answer',
+  'gloss',
+  'sense',
+  'example',
+  'examples',
+  'sentence',
+  'usage',
+  'level',
+  'cefr',
+  'type',
+  'pos',
+  'pronunciation',
+  'ipa',
+  'reading',
+  'tag',
+  'tags',
+  'ubersetzung',
+  'bedeutung',
+  'beispiel',
+  'wort',
+]);
+
+/**
+ * A row is the header iff its FIRST cell reads like "Word"/"Front"/"Term" AND at
+ * least one OTHER cell reads like a known header label. Requiring that second
+ * signal stops a genuine first data word that merely looks header-like — German
+ * "Wort" (= "word"), "Term", "Vocab" — from being silently dropped as a header
+ * (L20). A single-column file therefore never loses its first row.
+ */
 function isHeaderRow(row: string[]): boolean {
-  return HEADER_FIRST_CELLS.has(leadingToken(row[0] ?? ''));
+  if (!HEADER_FIRST_CELLS.has(leadingToken(row[0] ?? ''))) return false;
+  return row.slice(1).some((cell) => HEADER_OTHER_CELLS.has(leadingToken(cell)));
 }
 
 /**
@@ -411,7 +463,7 @@ export function parseImportCsv(text: string, fileName: string): ParsedImport {
   const clean = stripBom(text ?? '');
   if (clean.trim() === '') return { payload: [], name };
 
-  const delimiter = detectDelimiter(firstContentLine(clean));
+  const delimiter = detectDelimiter(clean);
   const rawRows = splitCsvRows(clean, delimiter);
 
   // Drop fully-blank rows (blank lines + the trailing-newline artifact).
