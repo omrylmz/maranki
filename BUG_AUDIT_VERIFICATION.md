@@ -12,7 +12,7 @@ Baseline before this pass: `tsc` clean · `jest` 154/154 · `expo lint` clean.
 | Gaps (PARTIAL / NOT_FIXED) | **8** |
 | FIXED but lacking a regression test | 17 |
 
-**C1 and 4 of 6 High items survived adversarial verification** with tests the skeptics could not break. The 8 gaps were honest *partial* fixes — the main thrust addressed, a reachable edge left.
+**C1 and 4 of 6 High items survived adversarial verification** with tests the skeptics could not break. The 8 gaps were honest *partial* fixes — the main thrust addressed, a reachable edge left. **All 8 are now closed** (7 fixed, L15 kept as a documented design decision and pinned with a test).
 
 ## Gap disposition
 
@@ -25,11 +25,11 @@ Baseline before this pass: `tsc` clean · `jest` 154/154 · `expo lint` clean.
 | **L15** | Low | NOT_FIXED | **Kept as a documented design decision.** Each per-deck launch count honestly equals the session that deck opens; the daily limit is one shared budget and the aggregate hero is the real ceiling. The audit's literal fix (pre-divide the budget) would break the file's load-bearing "button N === session length" invariant. Pinned the intended behavior with a test instead. | ✅ `queue.test.ts` |
 | **L18** | Low | PARTIAL | True streaming abort isn't reliably available on RN fetch (no readable `res.body`). Kept the existing size guards (Content-Length pre-check + post-read byteLength), **pinned them with tests**, and documented the residual (a server that both omits Content-Length and streams a >cap body could over-allocate before the post-read guard). | ✅ `ankiweb.test.ts` |
 | **L22** | Low | PARTIAL | PeekSheet/CardPeek vanished abruptly (no exit animation). Retain the target/card through `Sheet`'s slide-out (`open` follows the live prop; the retained value clears on `onClosed`) — self-contained, since the parents already mount these unconditionally. | — (animation; needs device check) |
-| **M5** | Med | PARTIAL | **Flagged, not changed.** Back/swipe exits already commit payout (fixed + guarded). The residual — a true process-kill mid-session drops XP/streak/SessionRecord while schedule writes survive — needs an in-progress-session marker reconciled on next boot (or per-rating payout). Committing eagerly on `AppState` background risks **double-paying** XP if the user merely backgrounds and returns. Worth doing as a device-verified lifecycle change. Note: the card *scheduling* already persists per-rating, so SRS progress is **not** lost on a kill — only the gamification/history for the interrupted session. |
+| **M5** | Med | **FIXED** | A process-kill mid-session kept the per-rating schedule writes but dropped the payout. Added a persisted `inProgressSession` marker (`trackSession` per rating) that the next boot reconciles via the existing `completeSession`. The marker is cleared in the **same `setState`** that banks the payout, so persistence is atomic — no double-count on resume or on a kill-after-finish. | ✅ `persistence.test.ts` (marker round-trips + pre-M5 docs still load); lifecycle path needs a device check |
 
 ## Final state
 
-`tsc --noEmit` clean · `jest` **166/166** (+12) · `expo lint` clean.
+`tsc --noEmit` clean · `jest` **168/168** (+14) · `expo lint` clean.
 
 ## Remaining coverage opportunity (not defects)
 
@@ -37,5 +37,4 @@ Baseline before this pass: `tsc` clean · `jest` 154/154 · `expo lint` clean.
 
 ## Not yet done
 
-- **M5** — device-verified session-lifecycle work (above).
-- **Device/emulator verification** of every fix — the audit and this pass are both static; nothing here has been exercised on a device.
+- **Device/emulator verification** of every fix — the audit and this pass are both static; nothing here has been exercised on a device. The lifecycle/animation items especially (M5's boot reconciliation, L22's slide-out) warrant a real pass.

@@ -152,6 +152,24 @@ export interface DayDone {
   neww: number;
 }
 
+/**
+ * A study session in flight, persisted alongside the per-rating schedule writes.
+ * Its payout (XP / streak / SessionRecord) only commits at the session boundary,
+ * which a process-kill skips — leaving the schedule advanced but the payout lost.
+ * This marker lets the next boot bank the payout exactly once (M5). It mirrors
+ * CompleteSessionArgs minus the transient finalCard (the cards are already final
+ * on disk by reconcile time).
+ */
+export interface InProgressSession {
+  kind: SessionKind;
+  label: string;
+  counts: Record<Rating, number>;
+  total: number;
+  bestRun: number;
+  durationSec: number;
+  fastAnswers: number;
+}
+
 export interface Person {
   xp: number;
   streak: number;
@@ -209,6 +227,8 @@ export interface DataState {
   reviewLog: ReviewLogEntry[];
   settings: AppSettings;
   onboarded: boolean;
+  /** A session in flight, reconciled on next boot if the app was killed (M5). */
+  inProgressSession: InProgressSession | null;
 }
 
 /* ------------------------------------------------------------- helpers */

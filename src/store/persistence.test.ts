@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from '@jest/globals';
 
+import { DataState } from '../domain/types';
 import { buildSeedState } from '../domain/seed';
 import {
   classifyStored,
@@ -58,6 +59,31 @@ describe('isValidState', () => {
     expect(isValidState({ cards: [], decks: [], person: {} })).toBe(false); // no settings
     expect(isValidState(null)).toBe(false);
     expect(isValidState('x')).toBe(false);
+  });
+});
+
+describe('inProgressSession marker (M5 — survives a reload; old docs still load)', () => {
+  test('a state carrying an in-flight session round-trips through serialize/parse', () => {
+    const withMarker: DataState = {
+      ...buildSeedState(0),
+      inProgressSession: {
+        kind: 'deck',
+        label: 'German A1',
+        counts: { again: 1, hard: 0, good: 3, easy: 1 },
+        total: 5,
+        bestRun: 4,
+        durationSec: 120,
+        fastAnswers: 2,
+      },
+    };
+    // The marker must survive a kill-and-relaunch so the boot reconciler sees it.
+    expect(parseStored(serialize(withMarker))).toEqual(withMarker);
+  });
+
+  test('a pre-M5 document with no inProgressSession field still loads', () => {
+    const legacy: Record<string, unknown> = { ...buildSeedState(0) };
+    delete legacy.inProgressSession; // older persisted shape
+    expect(classifyStored(JSON.stringify(legacy)).kind).toBe('loaded');
   });
 });
 

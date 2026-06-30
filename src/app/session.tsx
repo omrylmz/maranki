@@ -293,6 +293,18 @@ export default function SessionScreen() {
         : undefined;
       finish(nextCounts, idx + 1, nextBest, finalCard);
     } else {
+      // Persist progress-so-far so an app-kill mid-session doesn't drop its
+      // XP/streak/record (the schedule already persists per rating). Reconciled
+      // on next boot; cleared by completeSession on any clean exit (M5).
+      actions.trackSession({
+        kind,
+        label,
+        counts: nextCounts,
+        total: idx + 1,
+        bestRun: nextBest,
+        durationSec: Math.round((Date.now() - startedAt.current) / 1000),
+        fastAnswers: fastAnswers.current,
+      });
       setQueue(nextQueue);
       setIdx(idx + 1);
     }
