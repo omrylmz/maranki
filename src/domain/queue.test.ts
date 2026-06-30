@@ -23,6 +23,7 @@ import {
   collectionStats,
   computeReady,
   deckStats,
+  isLaunchable,
 } from './queue';
 import { Card, Collection, DAY, DayDone, Deck, DEFAULT_SRS, MIN, SrsSettings } from './types';
 
@@ -207,5 +208,57 @@ describe('deckStats.due is the TRUE urgency count, uncapped by the daily limit (
     const cards = [reviewDueCard('a'), learningDueCard('b'), newCard('c')];
     const settings: SrsSettings = { ...SRS, dailyReviewLimit: 1 };
     expect(deckStats(cards, 'd1', settings, noneDone, NOW).due).toBe(2); // a + b, not the new card
+  });
+});
+
+describe('isLaunchable: every launch control gates on the session, not on due (H1)', () => {
+  it('an all-NEW deck has 0 due but IS launchable — the freshly-added-deck bug', () => {
+    // The blank-slate onboarding produces exactly this: a deck of brand-new
+    // cards. due === 0 (nothing overdue), but a session WOULD open new cards.
+    const cards = Array.from({ length: 6 }, (_, i) =>
+      newCard(`N${i}`, { deckId: 'd1', createdAt: NOW - i * DAY }),
+    );
+    const s = deckStats(cards, 'd1', SRS, noneDone, NOW);
+    expect(s.due).toBe(0); // the old `due > 0` gate hid this deck behind a checkmark
+    expect(s.sessionCount).toBeGreaterThan(0); // ...yet there are new cards to study
+    expect(isLaunchable(s)).toBe(true);
+  });
+
+  it('a deck with only future reviews is genuinely caught up — NOT launchable', () => {
+    const s = deckStats([reviewFutureCard('F', { deckId: 'd1' })], 'd1', SRS, noneDone, NOW);
+    expect(s.due).toBe(0);
+    expect(s.sessionCount).toBe(0);
+    expect(isLaunchable(s)).toBe(false);
+  });
+
+  it('a deck whose review allowance is spent but still has overdue cards is NOT launchable', () => {
+    // due > 0 (overdue) yet sessionCount === 0 (daily review limit reached, no
+    // new budget): the OLD gate showed a "Study 0" button opening an empty
+    // session. isLaunchable correctly suppresses it.
+    const cards = [reviewDueCard('a'), reviewDueCard('b')];
+    const settings: SrsSettings = { ...SRS, dailyReviewLimit: 0, dailyNewLimit: 0 };
+    const s = deckStats(cards, 'd1', settings, noneDone, NOW);
+    expect(s.due).toBe(2);
+    expect(s.sessionCount).toBe(0);
+    expect(isLaunchable(s)).toBe(false);
+  });
+
+  it('gates collections the same way: a new favorite is launchable at 0 due', () => {
+    const favorites: Collection = {
+      id: 'c',
+      name: 'Favorites',
+      icon: 'star',
+      desc: '',
+      query: 'favorites',
+    };
+    const s = collectionStats(
+      [newCard('NF', { fav: true, createdAt: NOW - DAY })],
+      favorites,
+      SRS,
+      noneDone,
+      NOW,
+    );
+    expect(s.due).toBe(0);
+    expect(isLaunchable(s)).toBe(true);
   });
 });

@@ -26,7 +26,7 @@ import {
   Pill,
 } from '@/components/ui';
 import { levelInfo } from '@/domain/gamification';
-import { activeCardPool, collectionFilter, computeReady } from '@/domain/queue';
+import { activeCardPool, buildQueue, computeReady } from '@/domain/queue';
 import { addDays, CefrLevel, dayKeyOf } from '@/domain/types';
 import { normalizedDayDone, useAchievements, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
@@ -85,7 +85,16 @@ export default function StatsScreen() {
       dayDone,
       now,
     );
-    const weak = state.cards.filter((x) => collectionFilter('hardest')(x, now)).length;
+    // The "weak cards" number must equal the Review session it launches: the
+    // same active pool and the same buildQueue('hardest') (cap 20) reviewWeak
+    // opens. Counting all cards by a hand-rolled ease threshold over-reported a
+    // backlog the 20-card session never showed (L3).
+    const weak = buildQueue(activeCardPool(state.cards, state.decks), {
+      kind: 'hardest',
+      now,
+      settings: state.settings.srs,
+      done: dayDone,
+    }).length;
 
     // retention over the last 10 sessions
     const recent = state.sessions.slice(-10);

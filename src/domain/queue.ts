@@ -254,3 +254,16 @@ export function collectionStats(
     sessionCount: readyOfPool(pool, settings, done, now).total,
   };
 }
+
+/**
+ * Whether a "Study N" launch control should be live: true iff the session it
+ * opens would contain at least one card. Every launch surface (Study rows, the
+ * Home ledger, the peek sheet) gates on THIS — never on the due-only `due`
+ * count — so a freshly-added, all-NEW deck (0 overdue, but new cards waiting to
+ * be introduced) can be studied from its row instead of showing a false
+ * "caught up" checkmark. One definition, imported everywhere, so the gate can't
+ * drift back to `due > 0` in some fifth place.
+ */
+export function isLaunchable(stats: { sessionCount: number }): boolean {
+  return stats.sessionCount > 0;
+}
