@@ -161,7 +161,15 @@ function readyOfPool(pool: Card[], settings: SrsSettings, done: DayDone, now: nu
   };
 }
 
-/** The numbers the Home hero, Study badge and launchpad all share. */
+/**
+ * The numbers the Home hero, Study badge and launchpad all share.
+ *
+ * The daily new/review limits are a SINGLE budget shared across decks (remaining
+ * = limit - done). Scoped to one deck, each deck sees the full remaining budget,
+ * so per-deck sessionCounts can sum past the aggregate "study now" total — the
+ * aggregate is the real ceiling. Intentional: the limit caps a day's studying,
+ * not each deck independently.
+ */
 export function computeReady(
   cards: Card[],
   settings: SrsSettings,
@@ -210,7 +218,11 @@ export function deckStats(
     mastered,
     learning,
     neww,
-    due: ready.due + ready.learning,
+    // "N due" is the true urgency count — every due review + learning card,
+    // UNCAPPED by the daily review limit (a capped count under-reports how many
+    // are actually overdue). Same isDue definition as collectionStats.due, so the
+    // two surfaces agree. sessionCount stays the limit-aware launch size.
+    due: pool.filter((c) => isDue(c, now)).length,
     sessionCount: ready.total,
   };
 }

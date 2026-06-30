@@ -32,13 +32,13 @@ import {
 } from '@/domain/gamification';
 import { applyRating } from '@/domain/srs';
 import {
-  addDays,
   AppSettings,
   Card,
   DataState,
   dayKeyOf,
   DayDone,
   Deck,
+  MASTERED_INTERVAL_DAYS,
   Person,
   Rating,
   ReviewLogEntry,
@@ -49,6 +49,7 @@ import {
 import { buildSeedState } from '@/domain/seed';
 import { catalogAddPlan, CURATED_DECKS, materializeCatalogDeck } from '@/domain/deckCatalog';
 import { BACKUP_KEY, classifyStored, serialize, STORAGE_KEY } from './persistence';
+import { rollStreak, tallyReview, untallyReview } from './tally';
 
 const SAVE_DEBOUNCE_MS = 400;
 const REVIEW_LOG_CAP = 400;
@@ -92,6 +93,13 @@ export interface CompleteSessionArgs {
   bestRun: number;
   durationSec: number;
   fastAnswers: number;
+  /**
+   * The session's final rated card (post-rating). The final rateCard commits in
+   * the same tick as completeSession, so the committed-state mirror is stale by
+   * one rating; passing the fresh card lets mastery/language achievements be
+   * scored against the true end-of-session state.
+   */
+  finalCard?: Card;
 }
 
 interface DataActions {
@@ -248,15 +256,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!card) return prev;
       const wasNew = card.reps === 0;
       const dayDone = normalizedDayDone(prev.person, now);
-      const nextDayDone: DayDone = {
-        ...dayDone,
-        reviews: dayDone.reviews + 1,
-        neww: dayDone.neww + (wasNew ? 1 : 0),
-      };
+      const nextDayDone = tallyReview(dayDone, { wasNew, writeSchedule });
 
       if (!writeSchedule) {
-        // Cram: "Free practice — never changes your schedule."
-        return { ...prev, person: { ...prev.person, dayDone: nextDayDone } };
+        // Cram is free practice: it touches neither the schedule nor the day's
+        // review/new budgets. tallyReview returned dayDone unchanged, so commit
+        // only a genuine calendar rollover (else no-op).
+        return prev.person.dayDone === nextDayDone
+          ? prev
+          : { ...prev, person: { ...prev.person, dayDone: nextDayDone } };
       }
 
       const entry: ReviewLogEntry = {
@@ -299,11 +307,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         reviewLog: s.reviewLog.slice(0, -1),
         person: {
           ...s.person,
-          dayDone: {
-            ...dayDone,
-            reviews: Math.max(0, dayDone.reviews - 1),
-            neww: Math.max(0, dayDone.neww - (e.wasNew ? 1 : 0)),
-          },
+          dayDone: untallyReview(dayDone, { wasNew: e.wasNew }),
         },
       };
     });
@@ -318,26 +322,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const prev = stateRef.current;
     const person = prev.person;
 
-    // streak roll
-    let streak = person.streak;
-    let freezes = person.freezes;
-    const freezeUsedDays = [...person.freezeUsedDays];
+    // Streak roll. Depends only on `person` (streak/lastStudyDay/freezes), which
+    // the session's final rateCard never touches — so this snapshot is accurate.
+    const roll = rollStreak(person, today);
+    const streak = roll.streak;
+    const freezes = roll.freezes;
+    const freezeUsedDays = roll.freezeUsedDays;
     let freezeEarned = false;
-    if (person.lastStudyDay !== today) {
-      const yesterday = addDays(today, -1);
-      const dayBefore = addDays(today, -2);
-      if (person.lastStudyDay === yesterday) {
-        streak += 1;
-      } else if (person.lastStudyDay === dayBefore && freezes > 0) {
-        freezes -= 1;
-        freezeUsedDays.push(yesterday);
-        streak += 1;
-      } else {
-        streak = 1;
-      }
-    }
 
-    const xpItems = sessionXpItems(args.counts, args.total, args.bestRun, streak);
+    // L10: the +10 daily-streak bonus is paid once per day — only on the session
+    // that actually advanced the streak.
+    const xpItems = sessionXpItems(
+      args.counts,
+      args.total,
+      args.bestRun,
+      roll.advanced ? streak : 0,
+    );
     const xpTotal = sessionXpTotal(xpItems);
     const levelBefore = levelInfo(person.xp);
     const levelAfter = levelInfo(person.xp + xpTotal);
@@ -353,12 +353,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       xp: xpTotal,
     };
 
-    // achievements (incl. freeze payouts), evaluated against the new tallies
-    const masteredCount = prev.cards.filter(
-      (c) => c.reps > 0 && c.stepIndex === null && c.intervalDays >= 21,
+    // M6: the final rateCard committed in this same tick, so stateRef's cards are
+    // stale by one rating. Substitute the freshly-rated final card before scoring
+    // card-derived achievements, so a card that just graduated to mastered (or
+    // introduced a new language) is counted this session, not next.
+    const finalCard = args.finalCard;
+    const cards = finalCard
+      ? prev.cards.map((c) => (c.id === finalCard.id ? finalCard : c))
+      : prev.cards;
+    const masteredCount = cards.filter(
+      (c) => c.reps > 0 && c.stepIndex === null && c.intervalDays >= MASTERED_INTERVAL_DAYS,
     ).length;
-    const languagesStudied = new Set(prev.cards.filter((c) => c.reps > 0).map((c) => c.lang))
-      .size;
+    const languagesStudied = new Set(cards.filter((c) => c.reps > 0).map((c) => c.lang)).size;
     const projectedPerson: Person = {
       ...person,
       xp: person.xp + xpTotal,
@@ -368,7 +374,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
     const unlocked = newlyUnlocked({
       person: projectedPerson,
-      cards: prev.cards,
+      cards,
       sessions: [...prev.sessions, session],
       masteredCount,
       languagesStudied,

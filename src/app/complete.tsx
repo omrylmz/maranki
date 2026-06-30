@@ -100,7 +100,6 @@ export default function CompleteScreen() {
 
   const [tierTitle, tierSub] = completionTier(payout.accuracy);
   const levelUp = payout.levelAfter.level > payout.levelBefore.level;
-  const unlocked = payout.newAchievements[0];
 
   const seg = (n: number, color: string) =>
     n > 0 ? <View style={{ flex: n / payout.total, backgroundColor: color }} /> : null;
@@ -269,12 +268,13 @@ export default function CompleteScreen() {
         </CardBox>
       </RiseIn>
 
-      {/* achievement unlock — only when one actually unlocked */}
-      {unlocked && (
-        <RiseIn kind="pop" duration={400} delay={500}>
+      {/* achievement unlocks — every one earned this session, freeze credited
+          to the achievement that actually granted it */}
+      {payout.newAchievements.map((a, i) => (
+        <RiseIn key={a.id} kind="pop" duration={400} delay={500 + i * 120}>
           <View
             style={{
-              marginTop: 14,
+              marginTop: i === 0 ? 14 : 10,
               flexDirection: 'row',
               alignItems: 'center',
               gap: 13,
@@ -294,20 +294,20 @@ export default function CompleteScreen() {
                 justifyContent: 'center',
               }}
             >
-              <Ion name={unlocked.icon} size={21} color="#fff" />
+              <Ion name={a.icon} size={21} color="#fff" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[font('sans', 800), { fontSize: 14.5, color: c.ink }]}>
-                Achievement — {unlocked.name}
+                Achievement — {a.name}
               </Text>
               <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink2 }]}>
-                {unlocked.desc}
-                {payout.freezeEarned ? ' · +1 streak freeze earned' : ''}
+                {a.desc}
+                {a.grantsFreeze && payout.freezeEarned ? ' · +1 streak freeze earned' : ''}
               </Text>
             </View>
           </View>
         </RiseIn>
-      )}
+      ))}
 
       {/* keep going hub (A2) */}
       <SectionHead>Keep going</SectionHead>

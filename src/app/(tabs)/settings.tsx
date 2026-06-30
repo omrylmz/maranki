@@ -67,7 +67,12 @@ function StudyPrefs({ onBack }: { onBack: () => void }) {
           {label('Reviews per day')}
           <Stepper
             value={state.person.goalReviews}
-            onChange={(v) => actions.setGoals(v, state.person.goalNew)}
+            onChange={(v) => {
+              actions.setGoals(v, state.person.goalNew);
+              // Keep the scheduler's review cap in step with the goal, else a
+              // raised goal is silently capped at the old dailyReviewLimit (M2).
+              actions.updateSrsSettings({ dailyReviewLimit: v });
+            }}
             min={0}
             max={500}
             step={10}

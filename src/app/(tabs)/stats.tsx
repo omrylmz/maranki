@@ -281,7 +281,7 @@ export default function StatsScreen() {
                 {derived.ready.due + derived.ready.learning} cards due
               </Text>
               <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
-                {dayDone.reviews} studied so far today
+                {dayDone.reviews + dayDone.neww} studied so far today
               </Text>
             </View>
             <Btn size="sm" onPress={startSession}>

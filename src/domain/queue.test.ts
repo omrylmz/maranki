@@ -193,3 +193,19 @@ describe('a paused deck does not inflate the active-scoped count (Stats fix)', (
     expect(queue.length).toBe(ready.total);
   });
 });
+
+describe('deckStats.due is the TRUE urgency count, uncapped by the daily limit (M4)', () => {
+  it('reports every overdue card even when dailyReviewLimit is lower', () => {
+    const cards = [reviewDueCard('a'), reviewDueCard('b'), reviewDueCard('c')];
+    const settings: SrsSettings = { ...SRS, dailyReviewLimit: 1 };
+    const s = deckStats(cards, 'd1', settings, noneDone, NOW);
+    expect(s.due).toBe(3); // all three overdue — not capped at the limit
+    expect(s.sessionCount).toBe(1); // launch size stays limit-aware
+  });
+
+  it('uses the same isDue definition as collectionStats (review + learning, not new)', () => {
+    const cards = [reviewDueCard('a'), learningDueCard('b'), newCard('c')];
+    const settings: SrsSettings = { ...SRS, dailyReviewLimit: 1 };
+    expect(deckStats(cards, 'd1', settings, noneDone, NOW).due).toBe(2); // a + b, not the new card
+  });
+});
