@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AddDeckSheet } from '@/components/sheets/AddDeckSheet';
 import { PeekSheet, PeekTarget } from '@/components/sheets/PeekSheet';
 import { StreakSheet } from '@/components/sheets/StreakSheet';
 import {
@@ -57,12 +58,14 @@ export default function HomeScreen() {
 
   const [peek, setPeek] = useState<PeekTarget | null>(null);
   const [streakOpen, setStreakOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const now = useNow();
   const dayDone = normalizedDayDone(state.person, now);
 
   const activeDecks = useMemo(() => state.decks.filter((d) => d.active), [state.decks]);
   const pausedCount = state.decks.length - activeDecks.length;
+  const noDecks = state.decks.length === 0;
   const activeCards = useMemo(() => {
     const activeIds = new Set(activeDecks.map((d) => d.id));
     return state.cards.filter((card) => activeIds.has(card.deckId));
@@ -149,14 +152,68 @@ export default function HomeScreen() {
             {greeting(dateNow, isBrandNew)}
           </Text>
           <Text style={[font('sans', 400), tnum, { fontSize: 15, color: c.ink2, marginTop: 7 }]}>
-            {ready.total > 0
-              ? `${ready.total} cards ready · about ${ready.mins} min`
-              : 'You’re all caught up. Come back tomorrow — or study ahead.'}
+            {noDecks
+              ? 'Add a deck to begin — pick a language or import your own.'
+              : ready.total > 0
+                ? `${ready.total} cards ready · about ${ready.mins} min`
+                : 'You’re all caught up. Come back tomorrow — or study ahead.'}
           </Text>
         </View>
 
-        {/* ——— the invitation: card stack with today's first word ——— */}
-        {first ? (
+        {/* ——— the invitation: welcome (no decks), card stack, or caught-up ——— */}
+        {noDecks ? (
+          <View
+            style={[
+              {
+                marginTop: 24,
+                backgroundColor: c.card,
+                borderWidth: 1,
+                borderColor: c.hairline,
+                borderRadius: 18,
+                padding: 22,
+                alignItems: 'center',
+              },
+              c.shadow.sm,
+            ]}
+          >
+            <View
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 999,
+                backgroundColor: c.pineTint,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 14,
+              }}
+            >
+              <Ion name="sparkles" size={26} color={c.pine} />
+            </View>
+            <Text style={[font('serif', 600), { fontSize: 22, color: c.ink, textAlign: 'center' }]}>
+              Start with a deck
+            </Text>
+            <Text
+              style={[
+                font('sans', 400),
+                {
+                  fontSize: 13.5,
+                  color: c.ink2,
+                  marginTop: 4,
+                  marginBottom: 16,
+                  textAlign: 'center',
+                  maxWidth: 280,
+                  lineHeight: 20,
+                },
+              ]}
+            >
+              Pick a language from the curated catalog, or import your own — your words land right
+              here.
+            </Text>
+            <Btn icon="add" onPress={() => setAddOpen(true)}>
+              Add your first deck
+            </Btn>
+          </View>
+        ) : first ? (
           <View style={{ marginTop: 24 }}>
             <Pressable onPress={startSession} style={{ paddingTop: 10 }}>
               {/* stack edges */}
@@ -335,51 +392,57 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ——— today's ledger: goal + habit status ——— */}
-        <SectionHead>Daily goal</SectionHead>
-        <View style={{ flexDirection: 'row', gap: 18, paddingTop: 10, paddingBottom: 4 }}>
-          <View style={{ flex: 1 }}>
-            <View
-              style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}
-            >
-              <Text style={[font('sans', 700), { fontSize: 13, color: c.ink2 }]}>Reviews</Text>
-              <Text style={[font('mono', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
-                {dayDone.reviews}/{state.person.goalReviews}
+        {/* ——— today's ledger: goal + habit status (only once a deck exists) ——— */}
+        {!noDecks && (
+          <>
+            <SectionHead>Daily goal</SectionHead>
+            <View style={{ flexDirection: 'row', gap: 18, paddingTop: 10, paddingBottom: 4 }}>
+              <View style={{ flex: 1 }}>
+                <View
+                  style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}
+                >
+                  <Text style={[font('sans', 700), { fontSize: 13, color: c.ink2 }]}>Reviews</Text>
+                  <Text style={[font('mono', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
+                    {dayDone.reviews}/{state.person.goalReviews}
+                  </Text>
+                </View>
+                <Bar value={(dayDone.reviews / state.person.goalReviews) * 100} color={c.pine} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View
+                  style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}
+                >
+                  <Text style={[font('sans', 700), { fontSize: 13, color: c.ink2 }]}>New cards</Text>
+                  <Text style={[font('mono', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
+                    {dayDone.neww}/{state.person.goalNew}
+                  </Text>
+                </View>
+                <Bar value={(dayDone.neww / state.person.goalNew) * 100} color={c.amber} />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10 }}>
+              <Ion
+                name={studiedToday ? 'shield-checkmark' : 'shield-outline'}
+                size={15}
+                color={studiedToday ? c.success : c.warning}
+              />
+              <Text style={[font('sans', 400), { fontSize: 13, color: c.ink2 }]}>
+                {goalMet
+                  ? 'Daily goal complete! More tomorrow.'
+                  : studiedToday
+                    ? 'Streak safe today — keep going to hit your goal.'
+                    : 'Study today to keep your streak alive.'}
               </Text>
             </View>
-            <Bar value={(dayDone.reviews / state.person.goalReviews) * 100} color={c.pine} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View
-              style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}
-            >
-              <Text style={[font('sans', 700), { fontSize: 13, color: c.ink2 }]}>New cards</Text>
-              <Text style={[font('mono', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
-                {dayDone.neww}/{state.person.goalNew}
-              </Text>
-            </View>
-            <Bar value={(dayDone.neww / state.person.goalNew) * 100} color={c.amber} />
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10 }}>
-          <Ion
-            name={studiedToday ? 'shield-checkmark' : 'shield-outline'}
-            size={15}
-            color={studiedToday ? c.success : c.warning}
-          />
-          <Text style={[font('sans', 400), { fontSize: 13, color: c.ink2 }]}>
-            {goalMet
-              ? 'Daily goal complete! More tomorrow.'
-              : studiedToday
-                ? 'Streak safe today — keep going to hit your goal.'
-                : 'Study today to keep your streak alive.'}
-          </Text>
-        </View>
+          </>
+        )}
 
         {/* ——— decks ledger ——— */}
-        <SectionHead actionLabel="Manage" onAction={() => router.push('/(tabs)/study')}>
-          Your decks
-        </SectionHead>
+        {!noDecks && (
+          <SectionHead actionLabel="Manage" onAction={() => router.push('/(tabs)/study')}>
+            Your decks
+          </SectionHead>
+        )}
         <View>
           {activeDecks.map((d, i) => {
             const s = deckStats(state.cards, d.id, state.settings.srs, dayDone, now);
@@ -468,6 +531,7 @@ export default function HomeScreen() {
 
       <PeekSheet target={peek} onClose={() => setPeek(null)} />
       <StreakSheet open={streakOpen} onClose={() => setStreakOpen(false)} />
+      <AddDeckSheet open={addOpen} onClose={() => setAddOpen(false)} scope="all" />
     </>
   );
 }

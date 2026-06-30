@@ -10,7 +10,8 @@
  * card from scratch (reps 0, due now) rather than the seed's spread of SRS
  * states. No vocabulary is authored here.
  */
-import { DECK_SEEDS, splitArticle, type Spec } from './seed';
+import { DECK_SEEDS, type Spec } from './seed';
+import { splitArticle } from './words';
 import { Card, CefrLevel, Deck, DEFAULT_SRS, Lang } from './types';
 
 export type { Spec };
@@ -38,6 +39,38 @@ export const CURATED_DECKS: CatalogDeck[] = DECK_SEEDS.filter((s) => s.deck.buil
   level: s.deck.level,
   specs: s.specs,
 }));
+
+/** A curated language group — the by-language view the catalog UI browses. */
+export interface CatalogLanguage {
+  /** Per-card language code, e.g. 'de'. */
+  lang: Lang;
+  /** Display name, e.g. 'German' (= Deck.lang). */
+  deckLang: string;
+  flag: string;
+  decks: CatalogDeck[];
+}
+
+/**
+ * CURATED_DECKS grouped by language, preserving first-seen order. This is what
+ * the "Add a deck" sheet and onboarding browse: a short list of languages that
+ * stays legible no matter how many curated decks — or languages — we ship. The
+ * decks themselves are only revealed once a language is chosen, so the create
+ * surface never gets polluted as the catalog grows.
+ */
+export const CURATED_LANGUAGES: CatalogLanguage[] = (() => {
+  const groups: CatalogLanguage[] = [];
+  const byName = new Map<string, CatalogLanguage>();
+  for (const deck of CURATED_DECKS) {
+    let group = byName.get(deck.deckLang);
+    if (!group) {
+      group = { lang: deck.lang, deckLang: deck.deckLang, flag: deck.flag, decks: [] };
+      byName.set(deck.deckLang, group);
+      groups.push(group);
+    }
+    group.decks.push(deck);
+  }
+  return groups;
+})();
 
 /* Card-id minting: a uid('c')-style monotonic counter that mirrors
    DataContext's uid(). The "cat" infix keeps these ids provably disjoint from

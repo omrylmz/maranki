@@ -47,6 +47,7 @@ export default function StudyScreen() {
   const dayDone = normalizedDayDone(state.person, now);
   const active = state.decks.filter((d) => d.active);
   const paused = state.decks.filter((d) => !d.active);
+  const noDecks = state.decks.length === 0;
 
   const ready = useMemo(() => {
     const activeIds = new Set(active.map((d) => d.id));
@@ -79,6 +80,7 @@ export default function StudyScreen() {
         />
 
         {/* aggregate command */}
+        {!noDecks && (
         <CardBox
           onPress={startAll}
           style={{
@@ -114,10 +116,35 @@ export default function StudyScreen() {
           </View>
           <Ion name="chevron-forward" size={17} color={c.ink3} />
         </CardBox>
+        )}
 
         {/* decks */}
         <SectionHead>Decks</SectionHead>
         <View>
+          {noDecks && (
+            <View style={{ alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16 }}>
+              <Ion name="albums-outline" size={34} color={c.ink3} />
+              <Text
+                style={[
+                  font('serif', 600),
+                  { fontSize: 18, color: c.ink, marginTop: 12, marginBottom: 4, textAlign: 'center' },
+                ]}
+              >
+                No decks yet
+              </Text>
+              <Text
+                style={[
+                  font('sans', 400),
+                  { fontSize: 13, color: c.ink3, marginBottom: 16, textAlign: 'center', lineHeight: 19 },
+                ]}
+              >
+                Add a curated deck by language, create your own, or import from a file.
+              </Text>
+              <Btn icon="add" onPress={() => setCreateOpen(true)}>
+                Add a deck
+              </Btn>
+            </View>
+          )}
           {active.map((d, i) => {
             const s = deckStats(state.cards, d.id, state.settings.srs, dayDone, now);
             return (

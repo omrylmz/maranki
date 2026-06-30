@@ -10,19 +10,23 @@
  */
 import { describe, expect, it } from '@jest/globals';
 
-import { buildCatalogCards, catalogAddPlan, CURATED_DECKS } from './deckCatalog';
-import { buildSeedState, splitArticle } from './seed';
+import {
+  buildCatalogCards,
+  catalogAddPlan,
+  CURATED_DECKS,
+  CURATED_LANGUAGES,
+} from './deckCatalog';
+import { DECK_SEEDS } from './seed';
+import { splitArticle } from './words';
 import { Deck } from './types';
 
 const NOW = 1_700_000_000_000;
 
 describe('CURATED_DECKS', () => {
-  it('is non-empty and its ids are a subset of the seed built-in deck ids', () => {
+  it('is non-empty and every id is a built-in DECK_SEEDS deck id', () => {
     expect(CURATED_DECKS.length).toBeGreaterThan(0);
     const builtinIds = new Set(
-      buildSeedState(NOW)
-        .decks.filter((d) => d.builtin)
-        .map((d) => d.id),
+      DECK_SEEDS.filter((s) => s.deck.builtin).map((s) => s.deck.id),
     );
     for (const entry of CURATED_DECKS) {
       expect(builtinIds.has(entry.id)).toBe(true);
@@ -46,6 +50,7 @@ describe('CURATED_DECKS', () => {
 
 describe('buildCatalogCards', () => {
   it('emits one brand-new card per spec, bound to the deck, with preserved linguistics', () => {
+    expect(CURATED_DECKS.length).toBeGreaterThan(0);
     for (const entry of CURATED_DECKS) {
       const cards = buildCatalogCards(entry, NOW);
       expect(cards.length).toBe(entry.specs.length);
@@ -79,6 +84,7 @@ describe('buildCatalogCards', () => {
 
   it('mints a unique id for every card', () => {
     const all = CURATED_DECKS.flatMap((entry) => buildCatalogCards(entry, NOW));
+    expect(all.length).toBeGreaterThan(0);
     const ids = new Set(all.map((card) => card.id));
     expect(ids.size).toBe(all.length);
   });
@@ -107,5 +113,45 @@ describe('catalogAddPlan', () => {
   it("returns 'create' for an absent id", () => {
     expect(catalogAddPlan([], 'de-everyday')).toBe('create');
     expect(catalogAddPlan([base], 'fr-basics')).toBe('create');
+  });
+});
+
+describe('es-sentences — deck-level provenance vs per-card linguistics', () => {
+  const es = CURATED_DECKS.find((d) => d.id === 'es-sentences');
+
+  it('the catalog entry carries no deck-level CEFR (provenance, not linguistics)', () => {
+    expect(es).toBeDefined();
+    expect(es?.level).toBeNull();
+  });
+
+  it('yet its built cards carry real per-card linguistics spanning multiple levels', () => {
+    expect(es).toBeDefined();
+    const cards = buildCatalogCards(es!, NOW);
+    expect(cards.length).toBeGreaterThan(0);
+    expect(cards.every((c) => c.level !== null && c.type !== null)).toBe(true);
+    expect(new Set(cards.map((c) => c.level)).size).toBeGreaterThan(1);
+  });
+});
+
+describe('CURATED_LANGUAGES', () => {
+  it('groups every curated deck under exactly one language, losing none', () => {
+    const grouped = CURATED_LANGUAGES.flatMap((g) => g.decks);
+    expect(grouped.length).toBe(CURATED_DECKS.length);
+    expect(new Set(grouped.map((d) => d.id)).size).toBe(CURATED_DECKS.length);
+  });
+
+  it('lists each language exactly once', () => {
+    const names = CURATED_LANGUAGES.map((g) => g.deckLang);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('keeps each group non-empty and internally consistent', () => {
+    expect(CURATED_LANGUAGES.length).toBeGreaterThan(0);
+    for (const g of CURATED_LANGUAGES) {
+      expect(g.decks.length).toBeGreaterThan(0);
+      expect(
+        g.decks.every((d) => d.deckLang === g.deckLang && d.lang === g.lang && d.flag === g.flag),
+      ).toBe(true);
+    }
   });
 });

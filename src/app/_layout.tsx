@@ -48,11 +48,16 @@ function AppStack() {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
 
-  // language-first onboarding on first boot (F1)
+  // language-first onboarding on first boot (F1) — and again after a factory
+  // reset, which flips onboarded back to false. tourShown dedupes a single
+  // transition; clearing it once onboarded lets a later reset re-trigger.
   useEffect(() => {
-    if (ready && !state.onboarded && !tourShown.current) {
+    if (!ready) return;
+    if (!state.onboarded && !tourShown.current) {
       tourShown.current = true;
       router.push('/onboarding');
+    } else if (state.onboarded) {
+      tourShown.current = false;
     }
   }, [ready, state.onboarded, router]);
 

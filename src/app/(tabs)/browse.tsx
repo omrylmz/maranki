@@ -331,15 +331,15 @@ export default function BrowseScreen() {
         ]}
       >
         {state.cards.length === 0
-          ? 'Add a card or import a deck to get started.'
+          ? 'Add a curated deck, or import your own, to get started.'
           : 'Your cards are still here — the current search and filters exclude them.'}
       </Text>
       {state.cards.length === 0 ? (
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Btn kind="secondary" onPress={() => router.push('/card-editor')}>
-            Add a card
+          <Btn kind="secondary" onPress={() => router.push('/import')}>
+            Import
           </Btn>
-          <Btn onPress={() => router.push('/import')}>Import a deck</Btn>
+          <Btn onPress={() => setCreateOpen(true)}>Browse decks</Btn>
         </View>
       ) : (
         <Btn
