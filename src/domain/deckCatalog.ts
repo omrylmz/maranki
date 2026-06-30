@@ -5,10 +5,10 @@
  * entry into a real Deck + brand-new Cards.
  *
  * Vocabulary is defined ONCE: the corpora and DECK_SEEDS live in seed.ts (which
- * also produces the lived-in first-boot seed). Here we only re-shape those same
- * built-in seeds into a catalog view, plus a card builder that starts every
- * card from scratch (reps 0, due now) rather than the seed's spread of SRS
- * states. No vocabulary is authored here.
+ * now opens the app as a blank slate — nothing is auto-added). Here we only
+ * re-shape those same built-in seeds into a catalog view, plus a card builder
+ * that mints every card brand-new (reps 0, due now) when a deck is added. No
+ * vocabulary is authored here.
  */
 import { DECK_SEEDS, type Spec } from './seed';
 import { splitArticle } from './words';
@@ -84,10 +84,10 @@ function mintCatalogCardId(): string {
 }
 
 /**
- * Materialize a catalog entry's specs into BRAND-NEW cards (reps 0, due now) —
- * unlike the seed, which spreads cards across SRS states for a lived-in look.
- * Linguistics (level/type) are copied through non-null, which is precisely what
- * makes these cards Library-filterable.
+ * Materialize a catalog entry's specs into BRAND-NEW cards (reps 0, due now):
+ * a freshly-added deck always starts unstudied. Linguistics (level/type) are
+ * copied through non-null, which is precisely what makes these cards
+ * Library-filterable.
  *
  * `mintId` defaults to the local collision-safe minter; a caller may inject its
  * own id source (e.g. DataContext's uid) without changing the result shape.
@@ -127,6 +127,32 @@ export function buildCatalogCards(
       lastReviewedAt: null,
     };
   });
+}
+
+/**
+ * Materialize a catalog entry into a real, ACTIVE Deck plus its brand-new Cards
+ * — the transform behind DataContext.addCatalogDeck's 'create' path, and the one
+ * place a fresh install gains a deck. Pulled out of the store so the mapping is
+ * unit-testable. Mind the deliberate split: the Deck carries the DISPLAY language
+ * name (Deck.lang, e.g. 'German') for grouping and filters, while each Card
+ * carries the per-card CODE (Card.lang, e.g. 'de') for speech.
+ */
+export function materializeCatalogDeck(
+  entry: CatalogDeck,
+  now: number,
+  mintId?: () => string,
+): { deck: Deck; cards: Card[] } {
+  const deck: Deck = {
+    id: entry.id,
+    name: entry.name,
+    flag: entry.flag,
+    lang: entry.deckLang,
+    level: entry.level,
+    builtin: true,
+    active: true,
+    createdAt: now,
+  };
+  return { deck, cards: buildCatalogCards(entry, now, mintId) };
 }
 
 /**

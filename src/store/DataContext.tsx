@@ -46,7 +46,7 @@ import {
   SrsSettings,
 } from '@/domain/types';
 import { buildSeedState } from '@/domain/seed';
-import { buildCatalogCards, catalogAddPlan, CURATED_DECKS } from '@/domain/deckCatalog';
+import { catalogAddPlan, CURATED_DECKS, materializeCatalogDeck } from '@/domain/deckCatalog';
 
 const STORAGE_KEY = 'maranki.state.v1';
 const SAVE_DEBOUNCE_MS = 400;
@@ -558,19 +558,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }));
       return;
     }
-    // plan === 'create'
-    const now = Date.now();
-    const deck: Deck = {
-      id: entry.id,
-      name: entry.name,
-      flag: entry.flag,
-      lang: entry.deckLang,
-      level: entry.level,
-      builtin: true,
-      active: true,
-      createdAt: now,
-    };
-    const cards = buildCatalogCards(entry, now);
+    // plan === 'create' — one transform owns the deck+card shape (incl. the
+    // Deck.lang display-name vs Card.lang code split); see materializeCatalogDeck.
+    const { deck, cards } = materializeCatalogDeck(entry, Date.now());
     setState((s) =>
       s.decks.some((d) => d.id === entry.id)
         ? s

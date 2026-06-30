@@ -15,6 +15,7 @@ import {
   catalogAddPlan,
   CURATED_DECKS,
   CURATED_LANGUAGES,
+  materializeCatalogDeck,
 } from './deckCatalog';
 import { DECK_SEEDS } from './seed';
 import { splitArticle } from './words';
@@ -87,6 +88,49 @@ describe('buildCatalogCards', () => {
     expect(all.length).toBeGreaterThan(0);
     const ids = new Set(all.map((card) => card.id));
     expect(ids.size).toBe(all.length);
+  });
+});
+
+describe('materializeCatalogDeck', () => {
+  it('builds an active, builtin deck that preserves the catalog identity', () => {
+    expect(CURATED_DECKS.length).toBeGreaterThan(0);
+    for (const entry of CURATED_DECKS) {
+      const { deck } = materializeCatalogDeck(entry, NOW);
+      expect(deck.id).toBe(entry.id);
+      expect(deck.name).toBe(entry.name);
+      expect(deck.flag).toBe(entry.flag);
+      expect(deck.level).toBe(entry.level);
+      expect(deck.builtin).toBe(true);
+      expect(deck.active).toBe(true);
+      expect(deck.createdAt).toBe(NOW);
+    }
+  });
+
+  it("emits exactly the entry's specs as brand-new cards bound to the deck", () => {
+    for (const entry of CURATED_DECKS) {
+      const { deck, cards } = materializeCatalogDeck(entry, NOW);
+      expect(cards.length).toBe(entry.specs.length);
+      expect(cards.every((card) => card.deckId === deck.id)).toBe(true);
+      expect(cards.every((card) => card.reps === 0 && card.stepIndex === null)).toBe(true);
+    }
+  });
+
+  it('locks the Deck.lang (display name) vs Card.lang (code) split', () => {
+    // A swap here would silently break onboarding's langMeta and the Library
+    // language filters: the deck groups under 'German', the cards speak 'de'.
+    const de = CURATED_DECKS.find((d) => d.id === 'de-everyday');
+    expect(de).toBeDefined();
+    const { deck, cards } = materializeCatalogDeck(de!, NOW);
+    expect(deck.lang).toBe('German');
+    expect(cards.every((card) => card.lang === 'de')).toBe(true);
+    expect(deck.lang).not.toBe(cards[0].lang);
+  });
+
+  it('threads an injected id minter through to the cards', () => {
+    const entry = CURATED_DECKS[0];
+    let n = 0;
+    const { cards } = materializeCatalogDeck(entry, NOW, () => `fixed-${n++}`);
+    expect(cards.map((card) => card.id)).toEqual(entry.specs.map((_, i) => `fixed-${i}`));
   });
 });
 

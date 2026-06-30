@@ -9,7 +9,7 @@
  * Two scopes:
  *  - scope="curated" (Library FAB): the curated catalog only. When every curated
  *    deck is already in the library, a gentle all-set note points to Study's +.
- *  - scope="all" (Study FAB + Collections "+ New"): the curated catalog PLUS an
+ *  - scope="all" (Home welcome · Study FAB · Collections "+ New"): the curated catalog PLUS an
  *    "Other ways" section (New card · New deck · New collection · Import).
  *
  * Adding a deck keeps the sheet OPEN and recomputes "Added" straight from store

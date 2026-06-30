@@ -6,8 +6,6 @@
  * filter-ready vocabulary still lives here as DECK_SEEDS (the catalog corpus);
  * deckCatalog.ts re-shapes it into a by-language catalog that onboarding and the
  * "Add a deck" sheet materialize on demand via DataContext.addCatalogDeck.
- *
- * Sample vocabulary expands the corpus in design/ui_kits/app-v2/data.jsx.
  */
 import {
   AppSettings,

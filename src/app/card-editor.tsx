@@ -103,7 +103,7 @@ export default function CardEditorScreen() {
     router.back();
   };
 
-  // A card needs a deck to live in. On a blank slate there are none yet, so the
+  // A card needs an active deck to live in. On a blank slate there are none yet, so the
   // form would strand the user with a permanently-disabled Save — show a way
   // forward instead.
   if (!editing && activeDecks.length === 0) {
