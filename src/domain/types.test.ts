@@ -70,3 +70,22 @@ describe('Card with null linguistics (Path A)', () => {
     expect(c.type).toBe('noun');
   });
 });
+
+describe('displayState honours buriedUntil (L13)', () => {
+  it('a buried-but-overdue card is NOT labelled "due"', () => {
+    const card = makeCard({
+      id: 'b',
+      reps: 5,
+      stepIndex: null,
+      intervalDays: 10,
+      due: NOW - 1000, // overdue
+      buriedUntil: NOW + 1_000_000, // but buried until later
+    });
+    expect(displayState(card, NOW)).not.toBe('due');
+  });
+
+  it('an unburied overdue card still reads "due"', () => {
+    const card = makeCard({ id: 'd', reps: 5, stepIndex: null, intervalDays: 10, due: NOW - 1000 });
+    expect(displayState(card, NOW)).toBe('due');
+  });
+});

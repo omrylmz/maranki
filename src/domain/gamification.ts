@@ -84,7 +84,9 @@ export function levelInfo(xp: number): LevelInfo {
     name: LEVEL_NAMES[Math.min(level - 1, LEVEL_NAMES.length - 1)],
     into,
     toNext: ceil - xp,
-    pct: Math.round((into / span) * 100),
+    // Floor (capped at 99) so the bar never reads a full 100% while the next
+    // level is still unearned — it fills only on the level-up itself (L19).
+    pct: Math.min(99, Math.floor((into / span) * 100)),
   };
 }
 

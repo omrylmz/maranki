@@ -41,7 +41,9 @@ function schedule(card: Card, rating: Rating, s: SrsSettings): Scheduled {
   const inLearning = card.stepIndex !== null || card.reps === 0;
 
   if (inLearning) {
-    const step = card.stepIndex ?? 0;
+    // Clamp a persisted stepIndex into range so shrinking the learning-steps
+    // preset can't strand a card at an index that no longer exists (L12).
+    const step = Math.max(0, Math.min(card.stepIndex ?? 0, steps.length - 1));
     // A relearning card carries its post-lapse interval in intervalDays;
     // a brand-new card carries 0 and graduates to the configured intervals.
     const graduatedInterval =
@@ -77,10 +79,17 @@ function schedule(card: Card, rating: Rating, s: SrsSettings): Scheduled {
     }
     case 'hard': {
       const ease = Math.max(MIN_EASE, card.ease - 0.15);
-      const iv = clampInterval(
-        Math.max(card.intervalDays + 1, card.intervalDays * s.hardMultiplier * s.intervalModifier),
+      // Hard must land STRICTLY below Good — at small intervals both otherwise
+      // hit the `+1` floor and round to the same day, collapsing the grades (L11).
+      const goodIv = clampInterval(
+        Math.max(card.intervalDays + 1, card.intervalDays * card.ease * s.intervalModifier),
         s,
       );
+      const hardIv = Math.max(
+        card.intervalDays + 1,
+        card.intervalDays * s.hardMultiplier * s.intervalModifier,
+      );
+      const iv = clampInterval(Math.min(hardIv, goodIv - 1), s);
       return { ease, intervalDays: iv, stepIndex: null, delayMs: iv * DAY, lapsed: false };
     }
     case 'good': {

@@ -152,3 +152,28 @@ describe('M10: a requeued "Again" card must predict from its POST-lapse state', 
     expect(after.good).not.toBe(before.good); // so its "Good" prediction differs
   });
 });
+
+describe('L11: Hard interval stays strictly below Good', () => {
+  test('a small-interval low-ease card no longer collapses Hard === Good', () => {
+    const card = mk({ reps: 5, stepIndex: null, intervalDays: 1, ease: 1.3 });
+    const hard = applyRating(card, 'hard', DEFAULT_SRS, NOW);
+    const good = applyRating(card, 'good', DEFAULT_SRS, NOW);
+    expect(hard.intervalDays).toBeLessThan(good.intervalDays);
+  });
+
+  test('the ordering also holds at a large interval', () => {
+    const card = mk({ reps: 8, stepIndex: null, intervalDays: 30, ease: 2.5 });
+    const hard = applyRating(card, 'hard', DEFAULT_SRS, NOW);
+    const good = applyRating(card, 'good', DEFAULT_SRS, NOW);
+    expect(hard.intervalDays).toBeLessThan(good.intervalDays);
+  });
+});
+
+describe('L12: an out-of-range persisted stepIndex is clamped', () => {
+  test('a card stranded past a shrunk steps list lands on a valid step', () => {
+    const shrunk = { ...DEFAULT_SRS, learningStepsMin: [1, 10] }; // only 2 steps now
+    const stranded = mk({ reps: 2, stepIndex: 3, intervalDays: 0 }); // index 3 no longer exists
+    const r = applyRating(stranded, 'hard', shrunk, NOW); // hard repeats the (clamped) step
+    expect(r.stepIndex).toBe(1); // last valid index, not the stale 3
+  });
+});
