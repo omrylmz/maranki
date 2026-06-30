@@ -92,12 +92,17 @@ export default function CompleteScreen() {
     // ahead/hardest session. Re-deriving the filters by hand is how the numbers
     // drifted from the sessions they launch (M14).
     const pool = activeCardPool(state.cards, state.decks);
-    const opts = { now, settings: state.settings.srs, done: normalizedDayDone(state.person, now) };
+    const opts = {
+      now,
+      settings: state.settings.srs,
+      done: normalizedDayDone(state.person, now),
+      cap: state.settings.sessionLimit, // honour the user's session size (M7)
+    };
     return {
       aheadCount: buildQueue(pool, { kind: 'ahead', ...opts }).length,
       hardestCount: buildQueue(pool, { kind: 'hardest', ...opts }).length,
     };
-  }, [state.cards, state.decks, state.settings.srs, state.person, nowTick]);
+  }, [state.cards, state.decks, state.settings.srs, state.settings.sessionLimit, state.person, nowTick]);
 
   if (!payout) return <Redirect href="/(tabs)" />;
 

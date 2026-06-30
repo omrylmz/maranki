@@ -262,3 +262,15 @@ describe('isLaunchable: every launch control gates on the session, not on due (H
     expect(isLaunchable(s)).toBe(true);
   });
 });
+
+describe('buildQueue honours opts.cap for ahead/cram/hardest (M7)', () => {
+  const many = Array.from({ length: 40 }, (_, i) => reviewDueCard(`R${i}`, { ease: 1.5 + i * 0.01 }));
+
+  it('caps a hardest session at the provided session limit, not a hardcoded 20', () => {
+    const opts = { now: NOW, settings: SRS, done: noneDone } as const;
+    expect(buildQueue(many, { kind: 'hardest', ...opts, cap: 30 })).toHaveLength(30);
+    expect(buildQueue(many, { kind: 'cram', ...opts, cap: 35 })).toHaveLength(35);
+    // unspecified cap still falls back to 20 (tests / defensive callers)
+    expect(buildQueue(many, { kind: 'hardest', ...opts })).toHaveLength(20);
+  });
+});
