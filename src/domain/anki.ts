@@ -15,6 +15,7 @@
  */
 import { clampLevel } from './importFile';
 import { ImportCardPayload } from './importSamples';
+import { splitArticle } from './words';
 
 /** Unit Separator that joins Anki field values inside `notes.flds`. */
 export const FIELD_SEP = '\x1f';
@@ -23,6 +24,8 @@ export interface AnkiModel {
   name: string;
   /** Field display names, in ordinal order. */
   flds: string[];
+  /** Anki note-type kind: 0 = standard, 1 = cloze. */
+  type?: number;
 }
 export type AnkiModelMap = Record<string, AnkiModel>;
 
@@ -45,13 +48,21 @@ export function parseAnkiModels(modelsJson: string): AnkiModelMap {
     return out;
   }
   for (const mid of Object.keys(raw)) {
-    const m = raw[mid] as { name?: string; flds?: { name?: string; ord?: number }[] };
+    const m = raw[mid] as {
+      name?: string;
+      type?: number;
+      flds?: { name?: string; ord?: number }[];
+    };
     const flds = Array.isArray(m?.flds)
       ? [...m.flds]
           .sort((a, b) => (a?.ord ?? 0) - (b?.ord ?? 0))
           .map((f) => (typeof f?.name === 'string' ? f.name : ''))
       : [];
-    out[mid] = { name: typeof m?.name === 'string' ? m.name : '', flds };
+    out[mid] = {
+      name: typeof m?.name === 'string' ? m.name : '',
+      flds,
+      type: typeof m?.type === 'number' ? m.type : 0,
+    };
   }
   return out;
 }
@@ -142,22 +153,53 @@ function decodeEntities(s: string): string {
 
 /** {{c1::answer}} / {{c1::answer::hint}} — global, for replace + scanning. */
 const CLOZE_RE = /\{\{c\d+::([\s\S]*?)(?:::([\s\S]*?))?\}\}/g;
+/** Same, but capturing the cloze NUMBER (group 1) so cards can be split per c-num. */
+const CLOZE_RE_NUM = /\{\{c(\d+)::([\s\S]*?)(?:::([\s\S]*?))?\}\}/g;
 /** Non-global probe (safe for .test — no lastIndex state). */
 const CLOZE_DETECT = /\{\{c\d+::/;
 
-/** Cloze text → the prompt: each deletion becomes its hint in [..] or a [..] blank. */
-function clozeBlank(s: string): string {
-  return s.replace(CLOZE_RE, (_m, _ans, hint) => (hint ? `[${hint}]` : '[…]'));
+/** Distinct cloze numbers present, ascending (e.g. {{c1}}+{{c2}} → [1, 2]). */
+function clozeNumbers(s: string): number[] {
+  const nums: number[] = [];
+  const seen = new Set<number>();
+  CLOZE_RE_NUM.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = CLOZE_RE_NUM.exec(s)) !== null) {
+    const k = parseInt(m[1], 10);
+    if (!seen.has(k)) {
+      seen.add(k);
+      nums.push(k);
+    }
+  }
+  return nums.sort((a, b) => a - b);
 }
 
-/** Cloze text → the answer side: the deletion answers, comma-joined. */
-function clozeAnswers(s: string): string {
-  const out: string[] = [];
-  s.replace(CLOZE_RE, (_m: string, ans: string) => {
-    out.push(ans);
-    return '';
+/**
+ * Build the front/back for ONE cloze number `k` (Anki renders each c-number as a
+ * separate card): blank only c`k`'s deletions (hint in [..] or a [..] blank) and
+ * REVEAL every other deletion as its plain answer. Back = c`k`'s answers joined.
+ */
+function clozeCard(src: string, k: number): { front: string; back: string } {
+  const answers: string[] = [];
+  const front = src.replace(CLOZE_RE_NUM, (_full, num: string, ans: string, hint?: string) => {
+    if (parseInt(num, 10) === k) {
+      answers.push(ans);
+      return hint ? `[${hint}]` : '[…]';
+    }
+    return ans; // a different deletion → shown, not blanked, on this card
   });
-  return out.join(', ');
+  return { front, back: answers.join(', ') };
+}
+
+/**
+ * Treat a note as cloze only when its MODEL is a cloze type (Anki: `type === 1`,
+ * or a "Cloze" model name) — not merely because some field contains {{cN::}}
+ * text, which a normal note about Anki syntax legitimately could. An unknown
+ * model (unmatched mid) falls back to content detection so cloze still works.
+ */
+function isClozeModel(model: AnkiModel | undefined, values: string[]): boolean {
+  if (model) return model.type === 1 || /cloze/i.test(model.name);
+  return values.some((v) => CLOZE_DETECT.test(v || ''));
 }
 
 /**
@@ -188,9 +230,12 @@ export function stripHtml(input: string): string {
 // start of a name beginning with a non-ASCII letter (e.g. "Übersetzung", which a
 // plain \b never matched). `back(?![a-z])` keeps a bare "Back" field but stops it
 // stealing "Background"/"Backstory".
-const WORD_RE = /(?:^|[^a-z0-9])(word|wort|front|vorderseite|begriff|term|expression|frage|question|prompt|headword|lemma|vocab)/i;
-const TR_RE = /(?:^|[^a-z0-9])(translation|ubersetzung|übersetzung|meaning|bedeutung|back(?![a-z])|ruckseite|rückseite|definition|answer|antwort|output|english|gloss|sense)/i;
-const EX_RE = /(?:^|[^a-z0-9])(example|beispiel|satz|sentence|usage|context|sample)/i;
+// Field-role names cover EN/DE plus common ES/FR/IT labels; when none match, the
+// positional fallback below still maps front/back, so an unknown-language deck
+// is never mis-imported, just less precisely (M12).
+const WORD_RE = /(?:^|[^a-z0-9])(word|wort|front|vorderseite|begriff|term|termino|término|terme|expression|expresion|expresión|frage|question|prompt|headword|lemma|vocab|palabra|mot|parola|vocabolo)/i;
+const TR_RE = /(?:^|[^a-z0-9])(translation|traduccion|traducción|traduction|traduzione|ubersetzung|übersetzung|meaning|significado|significato|signification|bedeutung|back(?![a-z])|ruckseite|rückseite|definition|definicion|definición|answer|antwort|respuesta|reponse|réponse|risposta|output|english|gloss|sense|sentido|senso)/i;
+const EX_RE = /(?:^|[^a-z0-9])(example|ejemplo|exemple|esempio|beispiel|satz|sentence|frase|phrase|oracion|oración|usage|context|contexto|sample)/i;
 const LEVEL_RE = /(?:^|[^a-z0-9])(level|niveau|cefr|stufe|grade)/i;
 const IPA_RE = /(?:^|[^a-z0-9])(ipa|pronunciation|aussprache|phonetic|reading|romaji|pinyin)/i;
 
@@ -211,15 +256,17 @@ function firstFilled(values: string[], taken: Set<number>): number {
 }
 
 /**
- * Map one Anki note to a card payload using its model's field names. Returns
- * null when no usable front (word) text survives. `model` may be undefined
- * (unknown mid) → purely positional fallback.
+ * Map one Anki note to card payload(s) using its model's field names. A cloze
+ * note yields ONE CARD PER cloze number (matching Anki); a normal note yields a
+ * single card, or none when no usable front survives. `model` may be undefined
+ * (unknown mid) → positional fallback. Words are split into article/base so a
+ * German article renders de-emphasised, exactly like the CSV path (L16/L17).
  */
 export function mapAnkiNote(
   flds: string,
   tags: string,
   model: AnkiModel | undefined,
-): ImportCardPayload | null {
+): ImportCardPayload[] {
   const values = (flds ?? '').split(FIELD_SEP);
   const names = model?.flds && model.flds.length ? model.flds : values.map(() => '');
   const cardTags = (tags ?? '')
@@ -227,25 +274,28 @@ export function mapAnkiNote(
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
 
-  // Cloze notes ({{cN::answer::hint}}): build a real front (prompt with blanks)
-  // and back (the answers) from the deletion field — Cloze is a built-in Anki
-  // note type, so positional mapping would otherwise leak raw {{..}} markup.
-  const clozeIdx = values.findIndex((v) => CLOZE_DETECT.test(v || ''));
+  // Cloze notes: ONLY when the model is a cloze type (not any field that merely
+  // mentions {{cN::}}). Build a front (prompt with blanks) and back (answers)
+  // per cloze number — Anki makes c1, c2, … into separate cards.
+  const clozeIdx = isClozeModel(model, values)
+    ? values.findIndex((v) => CLOZE_DETECT.test(v || ''))
+    : -1;
   if (clozeIdx >= 0) {
     const src = values[clozeIdx];
-    const word = stripHtml(clozeBlank(src));
-    if (word === '') return null;
     const ci = findField(names, EX_RE, new Set([clozeIdx]));
-    const card: ImportCardPayload = {
-      word,
-      tr: stripHtml(clozeAnswers(src)),
-      level: null,
-      type: null,
-    };
-    const ex = ci >= 0 ? stripHtml(values[ci] || '') : '';
-    if (ex) card.ex = ex;
-    if (cardTags.length) card.tags = cardTags;
-    return card;
+    const exRaw = ci >= 0 ? stripHtml(values[ci] || '') : '';
+    const cards: ImportCardPayload[] = [];
+    for (const k of clozeNumbers(src)) {
+      const { front, back } = clozeCard(src, k);
+      const word = stripHtml(front);
+      if (word === '') continue;
+      const { article, base } = splitArticle(word);
+      const card: ImportCardPayload = { word, article, base, tr: stripHtml(back), level: null, type: null };
+      if (exRaw) card.ex = exRaw;
+      if (cardTags.length) card.tags = cardTags;
+      cards.push(card);
+    }
+    return cards;
   }
 
   const taken = new Set<number>();
@@ -263,7 +313,7 @@ export function mapAnkiNote(
       word = stripHtml(values[alt] || '');
     }
   }
-  if (word === '') return null; // genuinely empty note: skip
+  if (word === '') return []; // genuinely empty note: skip
   taken.add(wi);
 
   // Reserve the NAMED translation/example/ipa/level roles BEFORE the translation
@@ -283,8 +333,11 @@ export function mapAnkiNote(
   let ti = ti0;
   if (ti < 0) ti = firstFilled(values, taken);
 
+  const { article, base } = splitArticle(word);
   const card: ImportCardPayload = {
     word,
+    article,
+    base,
     tr: ti >= 0 ? stripHtml(values[ti] || '') : '',
     level: li >= 0 ? clampLevel(stripHtml(values[li] || '')) : null,
     type: null,
@@ -294,15 +347,12 @@ export function mapAnkiNote(
   if (ex) card.ex = ex;
   if (ipa) card.ipa = ipa;
   if (cardTags.length) card.tags = cardTags;
-  return card;
+  return [card];
 }
 
-/** Map a whole notes table to card payloads (drops notes with no front). */
+/** Map a whole notes table to card payloads (one note may yield 0..N cards). */
 export function buildApkgPayload(notes: AnkiNoteRow[], models: AnkiModelMap): ImportCardPayload[] {
   const out: ImportCardPayload[] = [];
-  for (const n of notes) {
-    const card = mapAnkiNote(n.flds, n.tags, models[n.mid]);
-    if (card) out.push(card);
-  }
+  for (const n of notes) out.push(...mapAnkiNote(n.flds, n.tags, models[n.mid]));
   return out;
 }

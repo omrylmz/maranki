@@ -25,6 +25,13 @@ import { strFromU8 } from 'fflate';
 /** Single origin for every endpoint. */
 const BASE = 'https://ankiweb.net';
 
+/**
+ * Reject any response bigger than this. The download endpoint returns a real
+ * .apkg (media included), so the cap is generous — but it stops a hostile or
+ * runaway body (or a zip-bomb-sized package) from exhausting memory.
+ */
+const MAX_RESPONSE_BYTES = 64 * 1024 * 1024; // 64 MB
+
 /* ------------------------------------------------------------------ types */
 
 export interface AnkiWebDeck {
@@ -127,8 +134,14 @@ function parseDeck(bytes: Uint8Array, start: number, end: number): AnkiWebDeck |
   let audio = 0;
   let images = 0;
 
-  let pos = start;
-  while (pos < end) {
+  // Clamp the submessage bound to the buffer: a corrupt length must not push
+  // `end` past `bytes.length`, or readVarint would pin at the edge and the loop
+  // would never advance (an app-freezing hang). `loopStart` is a belt-and-
+  // suspenders backstop for any wire type that fails to make progress.
+  const stop = Math.min(end, bytes.length);
+  let pos = Math.max(0, start);
+  while (pos < stop) {
+    const loopStart = pos;
     const [tag, afterTag] = readVarint(bytes, pos);
     pos = afterTag;
     const fieldNum = tag >>> 3; // tags are tiny, so the 32-bit shift is safe
@@ -165,7 +178,7 @@ function parseDeck(bytes: Uint8Array, start: number, end: number): AnkiWebDeck |
     } else if (wireType === 2) {
       const [len, afterLen] = readVarint(bytes, pos);
       pos = afterLen;
-      const fieldEnd = pos + len;
+      const fieldEnd = Math.min(pos + len, stop);
       if (fieldNum === 2) {
         // UTF-8 name (may contain emoji / accents) — decode the exact slice.
         name = strFromU8(bytes.slice(pos, fieldEnd));
@@ -174,6 +187,7 @@ function parseDeck(bytes: Uint8Array, start: number, end: number): AnkiWebDeck |
     } else {
       pos = skipField(bytes, pos, wireType);
     }
+    if (pos <= loopStart) break; // no progress ⇒ corrupt buffer, bail
   }
 
   if (id === '') return null;
@@ -190,6 +204,7 @@ export function parseDecksResponse(bytes: Uint8Array): AnkiWebDeck[] {
   const decks: AnkiWebDeck[] = [];
   let pos = 0;
   while (pos < bytes.length) {
+    const loopStart = pos;
     const [tag, afterTag] = readVarint(bytes, pos);
     pos = afterTag;
     const fieldNum = tag >>> 3;
@@ -198,13 +213,14 @@ export function parseDecksResponse(bytes: Uint8Array): AnkiWebDeck[] {
     if (fieldNum === 1 && wireType === 2) {
       const [len, afterLen] = readVarint(bytes, pos);
       pos = afterLen;
-      const end = pos + len;
+      const end = Math.min(pos + len, bytes.length); // never index past the buffer
       const deck = parseDeck(bytes, pos, end);
       if (deck) decks.push(deck);
       pos = end;
     } else {
       pos = skipField(bytes, pos, wireType);
     }
+    if (pos <= loopStart) break; // no progress ⇒ corrupt buffer, bail
   }
   decks.sort((a, b) => b.upvotes - a.upvotes);
   return decks;
@@ -284,10 +300,21 @@ async function fetchBytes(
   if (!res.ok) {
     throw new AnkiWebError(httpCode, `AnkiWeb returned HTTP ${res.status}.`);
   }
+  // Refuse an over-large body before reading it when the server declares one.
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
+    throw new AnkiWebError(httpCode, 'AnkiWeb response is too large to import safely.');
+  }
   try {
     // RN fetch exposes binary via arrayBuffer(); there is no CORS to worry about.
-    return new Uint8Array(await res.arrayBuffer());
+    const buf = await res.arrayBuffer();
+    // ...and re-check the actual size, in case Content-Length was absent or lied.
+    if (buf.byteLength > MAX_RESPONSE_BYTES) {
+      throw new AnkiWebError(httpCode, 'AnkiWeb response is too large to import safely.');
+    }
+    return new Uint8Array(buf);
   } catch (err) {
+    if (err instanceof AnkiWebError) throw err; // don't mask the size guard
     if (isAbortError(err)) throw err;
     throw new AnkiWebError(httpCode, 'AnkiWeb response could not be read.');
   }

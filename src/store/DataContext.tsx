@@ -48,6 +48,7 @@ import {
 } from '@/domain/types';
 import { buildSeedState } from '@/domain/seed';
 import { catalogAddPlan, CURATED_DECKS, materializeCatalogDeck } from '@/domain/deckCatalog';
+import { langCode } from '@/domain/words';
 import { DeleteStrategy, resolveDeckDeletion } from './deckOps';
 import { BACKUP_KEY, classifyStored, serialize, STORAGE_KEY } from './persistence';
 import { rollStreak, tallyReview, untallyReview } from './tally';
@@ -544,6 +545,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createdAt: now,
     };
     const srs = stateRef.current.settings.srs;
+    // Cards inherit the DECK's language (as a code) when the payload doesn't carry
+    // one — so an imported Spanish/French deck gets the right TTS instead of every
+    // import being forced to German (H6).
+    const deckLang = langCode(deckFields.lang);
     const cards: Card[] = cardFields.map((f, i) => ({
       id: uid('c'),
       deckId: deck.id,
@@ -556,7 +561,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       exTr: f.exTr,
       level: f.level ?? null,
       type: f.type ?? null,
-      lang: f.lang ?? 'de',
+      lang: f.lang ?? deckLang,
       tags: f.tags,
       fav: false,
       flagged: false,
