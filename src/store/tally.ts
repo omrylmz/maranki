@@ -8,6 +8,7 @@
  *   - L10: the +10 daily-streak XP is paid once per day — rollStreak reports
  *     whether THIS session is the day's first.
  */
+import { MAX_FREEZES } from '../domain/gamification';
 import { addDays, DayDone, Person } from '../domain/types';
 
 /** The day's tallies after rating one card. */
@@ -68,6 +69,12 @@ export function rollStreak(person: Person, today: string): StreakRoll {
     streak += 1;
   } else {
     streak = 1;
+  }
+  // Reward a streak freeze at each 7-day milestone — the promise the settings
+  // copy makes ("earn one at every 7-day milestone"). Capped (never reduces an
+  // existing surplus from other sources) so freezes can't grow without bound (M13).
+  if (streak % 7 === 0 && freezes < MAX_FREEZES) {
+    freezes += 1;
   }
   return { streak, freezes, freezeUsedDays, advanced: true };
 }

@@ -525,6 +525,10 @@ export default function SettingsScreen() {
               sub="Keeps every card, deck, streak and session"
               onPress={() => {
                 actions.updateAppSettings(DEFAULT_APP_SETTINGS);
+                // Reset the daily goals too (the seed defaults). The goal steppers
+                // tie goal↔limit, so leaving a high old goal above the reset limit
+                // would desync them — and the goal bars would never fill (L2).
+                actions.setGoals(30, 10);
                 show('Preferences reset — your study data is untouched');
               }}
             />

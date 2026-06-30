@@ -49,6 +49,11 @@ function dateOverline(now: Date): string {
   return `${weekday} · ${month} ${now.getDate()}`;
 }
 
+/** Goal progress %, guarded: a 0 goal reads 0 (no NaN, and not auto-complete) (L1). */
+function goalPct(done: number, goal: number): number {
+  return goal > 0 ? Math.min(100, (done / goal) * 100) : 0;
+}
+
 export default function HomeScreen() {
   const c = useColors();
   const router = useRouter();
@@ -407,7 +412,7 @@ export default function HomeScreen() {
                     {dayDone.reviews}/{state.person.goalReviews}
                   </Text>
                 </View>
-                <Bar value={(dayDone.reviews / state.person.goalReviews) * 100} color={c.pine} />
+                <Bar value={goalPct(dayDone.reviews, state.person.goalReviews)} color={c.pine} />
               </View>
               <View style={{ flex: 1 }}>
                 <View
@@ -418,7 +423,7 @@ export default function HomeScreen() {
                     {dayDone.neww}/{state.person.goalNew}
                   </Text>
                 </View>
-                <Bar value={(dayDone.neww / state.person.goalNew) * 100} color={c.amber} />
+                <Bar value={goalPct(dayDone.neww, state.person.goalNew)} color={c.amber} />
               </View>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10 }}>

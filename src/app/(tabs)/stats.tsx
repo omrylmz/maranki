@@ -27,7 +27,7 @@ import {
 } from '@/components/ui';
 import { levelInfo } from '@/domain/gamification';
 import { activeCardPool, buildQueue, computeReady } from '@/domain/queue';
-import { addDays, CefrLevel, dayKeyOf } from '@/domain/types';
+import { addDays, CefrLevel, dayKeyOf, isDue } from '@/domain/types';
 import { normalizedDayDone, useAchievements, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { useSnackbar } from '@/store/SnackbarContext';
@@ -59,6 +59,12 @@ function fmtDate(ms: number): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/** "YYYY-MM-DD" → "Mar 5", parsed in LOCAL time so DST can't shift the day (L4). */
+function fmtDayKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export default function StatsScreen() {
   const c = useColors();
   const router = useRouter();
@@ -79,17 +85,16 @@ export default function StatsScreen() {
     const totalCards = state.cards.length;
     const masteryPct = totalCards ? Math.round((mastered / totalCards) * 100) : 0;
 
-    const ready = computeReady(
-      activeCardPool(state.cards, state.decks),
-      state.settings.srs,
-      dayDone,
-      now,
-    );
+    const pool = activeCardPool(state.cards, state.decks);
+    const ready = computeReady(pool, state.settings.srs, dayDone, now);
+    // True overdue urgency (uncapped, review + learning), matching the deck rows'
+    // "N due"; the Start button stays limit-aware via ready.total (M4 consistency).
+    const dueNow = pool.filter((x) => isDue(x, now)).length;
     // The "weak cards" number must equal the Review session it launches: the
     // same active pool and the same buildQueue('hardest') (cap 20) reviewWeak
     // opens. Counting all cards by a hand-rolled ease threshold over-reported a
     // backlog the 20-card session never showed (L3).
-    const weak = buildQueue(activeCardPool(state.cards, state.decks), {
+    const weak = buildQueue(pool, {
       kind: 'hardest',
       now,
       settings: state.settings.srs,
@@ -146,6 +151,7 @@ export default function StatsScreen() {
       totalCards,
       masteryPct,
       ready,
+      dueNow,
       weak,
       retention,
       heat5w,
@@ -287,7 +293,7 @@ export default function StatsScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[font('sans', 700), tnum, { fontSize: 14.5, color: c.ink }]}>
-                {derived.ready.due + derived.ready.learning} cards due
+                {derived.dueNow} cards due
               </Text>
               <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
                 {dayDone.reviews + dayDone.neww} studied so far today
@@ -352,7 +358,7 @@ export default function StatsScreen() {
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={[font('sans', 400), { fontSize: 11.5, color: c.ink3 }]}>
-          {fmtDate(now - (range === 'y' ? 34 * 7 : 34) * 86_400_000)}
+          {fmtDayKey(addDays(today, -(range === 'y' ? 34 * 7 : 34)))}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Text style={[font('sans', 400), { fontSize: 11.5, color: c.ink3 }]}>less</Text>

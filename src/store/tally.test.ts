@@ -94,3 +94,25 @@ describe('rollStreak', () => {
     expect(roll.advanced).toBe(true);
   });
 });
+
+describe('rollStreak grants a freeze at each 7-day milestone (M13)', () => {
+  const yesterday = addDays(TODAY, -1);
+
+  test('reaching a 7-day streak awards a freeze', () => {
+    const roll = rollStreak(person({ streak: 6, lastStudyDay: yesterday, freezes: 0 }), TODAY);
+    expect(roll.streak).toBe(7);
+    expect(roll.freezes).toBe(1);
+  });
+
+  test('a non-milestone day grants nothing', () => {
+    const roll = rollStreak(person({ streak: 7, lastStudyDay: yesterday, freezes: 0 }), TODAY);
+    expect(roll.streak).toBe(8);
+    expect(roll.freezes).toBe(0);
+  });
+
+  test('the grant is capped (never exceeds MAX_FREEZES = 3)', () => {
+    const roll = rollStreak(person({ streak: 13, lastStudyDay: yesterday, freezes: 3 }), TODAY);
+    expect(roll.streak).toBe(14); // a milestone
+    expect(roll.freezes).toBe(3); // already at cap — not 4
+  });
+});

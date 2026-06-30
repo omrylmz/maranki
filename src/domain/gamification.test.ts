@@ -121,3 +121,16 @@ describe('completionTier', () => {
     expect(completionTier(40)[0]).toBe('Good, honest work.');
   });
 });
+
+describe('levelInfo.pct never reads a full 100% below the boundary (L19)', () => {
+  test('XP one short of the next level reads 99%, not a rounded-up 100%', () => {
+    // Level 2 begins at 270 XP; 269 is one short — under Math.round it read 100%.
+    const info = levelInfo(269);
+    expect(info.level).toBe(1);
+    expect(info.pct).toBe(99);
+  });
+
+  test('the very start of a level reads 0%', () => {
+    expect(levelInfo(0).pct).toBe(0);
+  });
+});

@@ -225,7 +225,10 @@ export function lifecycleState(card: Card): Exclude<CardState, 'due'> {
 /** Display state used by badges/rows: "due" wins over review/mastered/learning. */
 export function displayState(card: Card, now: number): CardState {
   const lc = lifecycleState(card);
-  if (lc !== 'new' && card.due <= now && !card.suspended) return 'due';
+  // A buried (or suspended) card isn't studiable today, so it must not read as
+  // "due" even when overdue — same gate as isDue (L13).
+  const buried = !!card.buriedUntil && card.buriedUntil > now;
+  if (lc !== 'new' && card.due <= now && !card.suspended && !buried) return 'due';
   return lc;
 }
 
