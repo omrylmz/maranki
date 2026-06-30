@@ -133,6 +133,8 @@ export default function SessionScreen() {
       now,
       settings: state.settings.srs,
       done: normalizedDayDone(state.person, now),
+      // ahead/cram/hardest honour the user's session size, not a hardcoded 20 (M7).
+      cap: state.settings.sessionLimit,
     });
   });
   const [idx, setIdx] = useState(0);

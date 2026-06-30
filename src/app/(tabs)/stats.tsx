@@ -99,6 +99,7 @@ export default function StatsScreen() {
       now,
       settings: state.settings.srs,
       done: dayDone,
+      cap: state.settings.sessionLimit, // honour the user's session size (M7)
     }).length;
 
     // retention over the last 10 sessions
