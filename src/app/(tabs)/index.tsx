@@ -28,7 +28,7 @@ import {
   SegBar,
   StreakChip,
 } from '@/components/ui';
-import { activeCardPool, buildQueue, computeReady, deckStats } from '@/domain/queue';
+import { activeCardPool, buildQueue, computeReady, deckStats, isLaunchable } from '@/domain/queue';
 import { dayKeyOf } from '@/domain/types';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
@@ -482,7 +482,7 @@ export default function HomeScreen() {
                     total={s.total}
                   />
                 </View>
-                {s.due > 0 ? (
+                {isLaunchable(s) ? (
                   <Pressable
                     onPress={() => startDeck(d.id, d.name)}
                     style={({ pressed }) => ({

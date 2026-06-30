@@ -8,7 +8,7 @@ import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
 
 import { Btn, DeckTag, DeckTile, Ion, SegBar, Sheet } from '@/components/ui';
-import { activeCardPool, collectionStats, deckStats } from '@/domain/queue';
+import { activeCardPool, collectionStats, deckStats, isLaunchable } from '@/domain/queue';
 import { Collection, Deck } from '@/domain/types';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
@@ -145,7 +145,11 @@ export function PeekSheet({ target, onClose }: PeekSheetProps) {
             {!isColl && <DeckTag builtin={target.deck.builtin} />}
             <Text style={[font('sans', 400), tnum, { fontSize: 13, color: c.ink3 }]}>
               {info.count.toLocaleString('en-US')} cards
-              {info.due > 0 ? ` · ${info.due} due now` : ' · caught up'}
+              {info.due > 0
+                ? ` · ${info.due} due now`
+                : info.sessionCount > 0
+                  ? ` · ${info.sessionCount} new`
+                  : ' · caught up'}
             </Text>
           </View>
         </View>
@@ -179,8 +183,8 @@ export function PeekSheet({ target, onClose }: PeekSheetProps) {
       )}
 
       <View style={{ gap: 10, marginTop: 18 }}>
-        <Btn full size="lg" icon="play" onPress={() => study(info.due === 0)}>
-          {info.due > 0 ? `Study ${info.sessionCount}` : 'Nothing due — study ahead'}
+        <Btn full size="lg" icon="play" onPress={() => study(!isLaunchable(info))}>
+          {isLaunchable(info) ? `Study ${info.sessionCount}` : 'Nothing due — study ahead'}
         </Btn>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Btn kind="secondary" icon="search" onPress={browse} style={{ flex: 1 }} full>

@@ -24,9 +24,8 @@ import {
   SectionHead,
 } from '@/components/ui';
 import { completionTier } from '@/domain/gamification';
-import { collectionFilter } from '@/domain/queue';
-import { DAY } from '@/domain/types';
-import { useData } from '@/store/DataContext';
+import { activeCardPool, buildQueue } from '@/domain/queue';
+import { normalizedDayDone, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { font, tnum } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
@@ -88,13 +87,17 @@ export default function CompleteScreen() {
   const nowTick = useNow();
   const hub = useMemo(() => {
     const now = nowTick;
-    const aheadCount = state.cards.filter(
-      (card) => card.reps > 0 && card.due > now && card.due <= now + DAY && !card.suspended,
-    ).length;
-    const hardestCount = state.cards.filter((card) => collectionFilter('hardest')(card, now)).length;
-    const cramCount = state.cards.filter((card) => card.reps > 0 && !card.suspended).length;
-    return { aheadCount, hardestCount, cramCount };
-  }, [state.cards, nowTick]);
+    // Count what each "keep going" tap would ACTUALLY open: the same active pool
+    // and the same buildQueue (cap 20) session.tsx runs for a deckId-less
+    // ahead/hardest session. Re-deriving the filters by hand is how the numbers
+    // drifted from the sessions they launch (M14).
+    const pool = activeCardPool(state.cards, state.decks);
+    const opts = { now, settings: state.settings.srs, done: normalizedDayDone(state.person, now) };
+    return {
+      aheadCount: buildQueue(pool, { kind: 'ahead', ...opts }).length,
+      hardestCount: buildQueue(pool, { kind: 'hardest', ...opts }).length,
+    };
+  }, [state.cards, state.decks, state.settings.srs, state.person, nowTick]);
 
   if (!payout) return <Redirect href="/(tabs)" />;
 
@@ -328,7 +331,7 @@ export default function CompleteScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[font('sans', 700), { fontSize: 14.5, color: c.ink }]}>Study ahead</Text>
             <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
-              {hub.aheadCount} cards due in the next day · an extra pass
+              {hub.aheadCount} cards up next · an extra pass
             </Text>
           </View>
           <Ion name="chevron-forward" size={16} color={c.ink3} />

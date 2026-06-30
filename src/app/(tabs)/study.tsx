@@ -25,7 +25,7 @@ import {
   ScreenHead,
   SectionHead,
 } from '@/components/ui';
-import { activeCardPool, collectionStats, computeReady, deckStats } from '@/domain/queue';
+import { activeCardPool, collectionStats, computeReady, deckStats, isLaunchable } from '@/domain/queue';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { useSnackbar } from '@/store/SnackbarContext';
@@ -168,10 +168,14 @@ export default function StudyScreen() {
                     style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3, marginTop: 2 }]}
                   >
                     {s.total.toLocaleString('en-US')} cards
-                    {s.due > 0 ? ` · ${s.due} due` : ' · caught up'}
+                    {s.due > 0
+                      ? ` · ${s.due} due`
+                      : s.sessionCount > 0
+                        ? ` · ${s.sessionCount} new`
+                        : ' · caught up'}
                   </Text>
                 </View>
-                {s.due > 0 ? (
+                {isLaunchable(s) ? (
                   <Btn
                     size="sm"
                     onPress={() =>
@@ -280,10 +284,15 @@ export default function StudyScreen() {
                   <Text
                     style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3, marginTop: 1 }]}
                   >
-                    {s.count} cards · {s.due} due
+                    {s.count} cards
+                    {s.due > 0
+                      ? ` · ${s.due} due`
+                      : s.sessionCount > 0
+                        ? ` · ${s.sessionCount} new`
+                        : ' · caught up'}
                   </Text>
                 </View>
-                {s.due > 0 ? (
+                {isLaunchable(s) ? (
                   <Btn
                     size="sm"
                     kind="secondary"
