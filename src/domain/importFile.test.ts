@@ -24,6 +24,25 @@ describe('detectDelimiter — scores across lines, not just the first (H5)', () 
   test('a single-column file falls back to comma (splits nothing)', () => {
     expect(detectDelimiter('Hund\nKatze\nVogel')).toBe(',');
   });
+
+  test('a comma inside a value column cannot out-vote the real tab/semicolon (H5)', () => {
+    // A 2-column TSV whose meaning column is a comma-separated synonym list.
+    // Comma splits each row into MORE (but equally consistent) columns; the old
+    // count-rewarding score chose ',', embedding a literal tab into the word.
+    expect(detectDelimiter('gehen\tto go, to walk\nlaufen\tto run, to jog')).toBe('\t');
+    // Two commas per row — comma would yield 3 uniform columns vs the tab's 2.
+    expect(
+      detectDelimiter('gehen\tto go, to walk, to march\nlaufen\tto run, to jog, to sprint'),
+    ).toBe('\t');
+    // Same hazard with a semicolon-delimited file.
+    expect(detectDelimiter('gehen;to go, to walk\nlaufen;to run, to jog')).toBe(';');
+  });
+
+  test('the synonym-list TSV parses into clean word/translation pairs (H5)', () => {
+    const { payload } = parseImportCsv('gehen\tto go, to walk\nlaufen\tto run, to jog', 'verbs.tsv');
+    expect(payload.map((p) => p.word)).toEqual(['gehen', 'laufen']);
+    expect(payload.map((p) => p.tr)).toEqual(['to go, to walk', 'to run, to jog']);
+  });
 });
 
 describe('splitCsvRows — RFC-4180 quoting', () => {
@@ -49,6 +68,15 @@ describe('parseImportCsv — header detection (L20)', () => {
   test('a single-column file never loses its first row', () => {
     const { payload } = parseImportCsv('Word\nHund\nKatze', 'deck.csv');
     expect(payload.map((p) => p.word)).toEqual(['Word', 'Hund', 'Katze']);
+  });
+
+  test('surfaces a header row as fieldNames for language inference (H6)', () => {
+    // A Spanish header whose deck name has no language hint: the header labels
+    // are returned so inferLang can pick Spanish downstream.
+    const { fieldNames } = parseImportCsv('Palabra,Traducción\ngato,cat', 'Lección 1.csv');
+    expect(fieldNames).toEqual(['Palabra', 'Traducción']);
+    // No header ⇒ no field names (nothing to infer from).
+    expect(parseImportCsv('gato,cat\nperro,dog', 'deck.csv').fieldNames).toBeUndefined();
   });
 });
 

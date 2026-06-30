@@ -18,6 +18,25 @@ describe('inferLang', () => {
     expect(inferLang([''])).toBe('German');
   });
 
+  test('infers from foreign field/header labels when the name has no hint (H6)', () => {
+    // A French deck whose NAME ("Leçon 1") carries no language word, but whose
+    // column headers / Anki fields do.
+    expect(inferLang(['Leçon 1', 'Mot', 'Traduction'])).toBe('French');
+    // A Spanish deck — accented labels are folded before matching.
+    expect(inferLang(['Lección 3', 'Palabra', 'Traducción', 'Ejemplo'])).toBe('Spanish');
+    expect(inferLang(['Vokabeln', 'Wort', 'Übersetzung'])).toBe('German');
+  });
+
+  test('an explicit language name still outranks a field label', () => {
+    expect(inferLang(['Spanish Basics', 'Mot', 'Traduction'])).toBe('Spanish');
+  });
+
+  test('a short label token never matches inside an unrelated word (H6)', () => {
+    // "mot" is the French label for "word" but must not fire inside "Emotions".
+    expect(inferLang(['Emotions vocabulary'])).toBe('German');
+    expect(inferLang(['Remote work terms'])).toBe('German');
+  });
+
   test('pairs with langCode to yield the TTS code', () => {
     expect(langCode(inferLang(['Spanish Basics']))).toBe('es');
     expect(langCode(inferLang(['French Basics']))).toBe('fr');

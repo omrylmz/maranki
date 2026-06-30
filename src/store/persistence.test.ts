@@ -6,7 +6,13 @@
 import { describe, expect, test } from '@jest/globals';
 
 import { buildSeedState } from '../domain/seed';
-import { classifyStored, isValidState, parseStored, serialize } from './persistence';
+import {
+  classifyStored,
+  isValidState,
+  parseStored,
+  persistErrorMessage,
+  serialize,
+} from './persistence';
 
 describe('classifyStored', () => {
   test('null or empty → first-boot', () => {
@@ -52,5 +58,22 @@ describe('isValidState', () => {
     expect(isValidState({ cards: [], decks: [], person: {} })).toBe(false); // no settings
     expect(isValidState(null)).toBe(false);
     expect(isValidState('x')).toBe(false);
+  });
+});
+
+describe('persistErrorMessage (M15 — a failed load/save must not be silent)', () => {
+  test('null → no message', () => {
+    expect(persistErrorMessage(null)).toBeNull();
+  });
+
+  test('read and write produce distinct, user-facing messages', () => {
+    const read = persistErrorMessage('read');
+    const write = persistErrorMessage('write');
+    expect(read).toBeTruthy();
+    expect(write).toBeTruthy();
+    expect(read).not.toBe(write);
+    // The read message reassures that intact data won't be overwritten (C1).
+    expect(read).toMatch(/restart/i);
+    expect(write).toMatch(/sav/i);
   });
 });

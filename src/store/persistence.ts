@@ -69,3 +69,17 @@ export function classifyStored(raw: string | null): LoadOutcome {
 export function serialize(state: DataState): string {
   return JSON.stringify(state);
 }
+
+/**
+ * User-facing message for a persistence failure, or null when there is none.
+ * Surfaced via the snackbar (M15) so a failed load/save is never silent:
+ *   - 'read'  — saved data couldn't be opened; writes are blocked so the intact
+ *               document is never overwritten (C1) — a restart is the safe move.
+ *   - 'write' — the latest changes didn't persist (e.g. device storage full).
+ */
+export function persistErrorMessage(kind: 'read' | 'write' | null): string | null {
+  if (kind === 'read')
+    return "Couldn't open your saved data — please restart. Your progress is safe and won't be overwritten.";
+  if (kind === 'write') return "Couldn't save your latest changes — your device may be out of storage.";
+  return null;
+}

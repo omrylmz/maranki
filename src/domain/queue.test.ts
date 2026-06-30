@@ -211,6 +211,39 @@ describe('deckStats.due is the TRUE urgency count, uncapped by the daily limit (
   });
 });
 
+describe('the daily limit is ONE shared budget across decks, not per-deck (L15)', () => {
+  // Two decks, each with more due reviews than the whole day's allowance. The
+  // audit asked for the budget to be pre-divided so per-deck counts sum to the
+  // aggregate — but that would make a deck row show fewer cards than tapping it
+  // opens, breaking the load-bearing "button N === session length" invariant.
+  // The deliberate, documented choice: each deck row is HONEST about its own
+  // session, and the aggregate hero is the real daily ceiling.
+  const settings: SrsSettings = { ...SRS, dailyReviewLimit: 5, dailyNewLimit: 0 };
+  const cards = [
+    ...Array.from({ length: 8 }, (_, i) => reviewDueCard(`A${i}`, { deckId: 'd1' })),
+    ...Array.from({ length: 8 }, (_, i) => reviewDueCard(`B${i}`, { deckId: 'd2' })),
+  ];
+
+  it('each per-deck launch count still equals the session that deck opens', () => {
+    for (const deckId of ['d1', 'd2']) {
+      const s = deckStats(cards, deckId, settings, noneDone, NOW);
+      const queue = buildQueue(cards, { kind: 'deck', deckId, now: NOW, settings, done: noneDone });
+      expect(s.sessionCount).toBe(queue.length); // honest per deck
+      expect(s.sessionCount).toBe(5); // = the shared remaining, not 8
+    }
+  });
+
+  it('per-deck counts may sum past the aggregate ceiling (the shared budget)', () => {
+    const perDeck =
+      deckStats(cards, 'd1', settings, noneDone, NOW).sessionCount +
+      deckStats(cards, 'd2', settings, noneDone, NOW).sessionCount;
+    const aggregate = computeReady(cards, settings, noneDone, NOW).total;
+    expect(aggregate).toBe(5); // the day's real ceiling
+    expect(perDeck).toBe(10); // 5 + 5 — intentionally exceeds the aggregate
+    expect(perDeck).toBeGreaterThan(aggregate);
+  });
+});
+
 describe('isLaunchable: every launch control gates on the session, not on due (H1)', () => {
   it('an all-NEW deck has 0 due but IS launchable — the freshly-added-deck bug', () => {
     // The blank-slate onboarding produces exactly this: a deck of brand-new
