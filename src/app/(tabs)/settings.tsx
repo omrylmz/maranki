@@ -27,6 +27,7 @@ import {
 import { levelInfo } from '@/domain/gamification';
 import { formatDelay } from '@/domain/srs';
 import { DEFAULT_APP_SETTINGS, DEFAULT_SRS, MIN } from '@/domain/types';
+import { backupStamp, exportBackup } from '@/store/backup';
 import { useData } from '@/store/DataContext';
 import { useSnackbar } from '@/store/SnackbarContext';
 import { font, tnum } from '@/theme/tokens';
@@ -278,7 +279,6 @@ export default function SettingsScreen() {
   const [q, setQ] = useState('');
   const [drill, setDrill] = useState<Drill>(null);
   const [eraseOpen, setEraseOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
 
   const match = (...words: string[]) =>
     !q || words.some((w) => w.toLowerCase().includes(q.toLowerCase()));
@@ -294,11 +294,12 @@ export default function SettingsScreen() {
   }, [state]);
 
   const doExport = () => {
-    setExporting(true);
-    setTimeout(() => {
-      setExporting(false);
-      show('Backup exported — maranki-backup.json');
-    }, 1400);
+    try {
+      const { name } = exportBackup(state, backupStamp(new Date()));
+      show(`Backup saved — ${name}`);
+    } catch {
+      show('Backup failed — could not write the file');
+    }
   };
 
   if (drill === 'study') return <StudyPrefs onBack={() => setDrill(null)} />;
@@ -458,14 +459,7 @@ export default function SettingsScreen() {
             icon="cloud-upload-outline"
             title="Export a backup"
             sub="Everything — cards, progress, settings"
-            onPress={exporting ? undefined : doExport}
-            right={
-              exporting ? (
-                <Text style={[font('sans', 700), { fontSize: 12.5, color: c.pine }]}>
-                  Exporting…
-                </Text>
-              ) : undefined
-            }
+            onPress={doExport}
           />
           <ListRow
             icon="refresh-circle-outline"
@@ -584,8 +578,13 @@ export default function SettingsScreen() {
           icon="cloud-upload-outline"
           style={{ marginBottom: 10 }}
           onPress={() => {
+            try {
+              const { name } = exportBackup(state, backupStamp(new Date()));
+              show(`Backup saved — ${name}`);
+            } catch {
+              show('Backup failed — could not write the file');
+            }
             setEraseOpen(false);
-            show('Backup exported — maranki-backup.json');
           }}
         >
           Export a backup first

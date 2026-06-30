@@ -41,11 +41,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [override, setOverride] = useState<ResolvedScheme | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((stored) => {
-      if (stored === 'light' || stored === 'dark' || stored === 'system') {
-        setModeState(stored);
-      }
-    });
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then((stored) => {
+        if (stored === 'light' || stored === 'dark' || stored === 'system') {
+          setModeState(stored);
+        }
+      })
+      .catch(() => {
+        // A failed preference read just keeps the default — never an unhandled
+        // rejection.
+      });
   }, []);
 
   const setMode = useCallback((next: ThemeMode) => {

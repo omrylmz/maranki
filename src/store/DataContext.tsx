@@ -8,6 +8,7 @@
  * from src/domain/seed.ts on first boot.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 import React, {
   createContext,
   useCallback,
@@ -47,8 +48,8 @@ import {
 } from '@/domain/types';
 import { buildSeedState } from '@/domain/seed';
 import { catalogAddPlan, CURATED_DECKS, materializeCatalogDeck } from '@/domain/deckCatalog';
+import { BACKUP_KEY, classifyStored, serialize, STORAGE_KEY } from './persistence';
 
-const STORAGE_KEY = 'maranki.state.v1';
 const SAVE_DEBOUNCE_MS = 400;
 const REVIEW_LOG_CAP = 400;
 
@@ -129,10 +130,14 @@ interface DataActions {
   factoryReset: () => void;
 }
 
+/** Persistence health: 'read' blocks writes (load failed); 'write' = a save failed. */
+export type PersistError = 'read' | 'write' | null;
+
 interface DataValue {
   ready: boolean;
   state: DataState;
   lastCompletion: CompletionPayout | null;
+  persistError: PersistError;
   actions: DataActions;
 }
 
@@ -142,6 +147,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<DataState>(() => buildSeedState(Date.now()));
   const [ready, setReady] = useState(false);
   const [lastCompletion, setLastCompletion] = useState<CompletionPayout | null>(null);
+  const [persistError, setPersistError] = useState<PersistError>(null);
+  // While false, the debounced save is suppressed — set when the initial read
+  // FAILS, so a transient error can't overwrite intact stored data (C1).
+  const canSaveRef = useRef(true);
 
   // Mirror for actions that need the latest committed state synchronously.
   // Updated in an effect (post-commit) — actions only fire from event
@@ -155,32 +164,79 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   /* ------------------------------------------------------ load & save */
 
   useEffect(() => {
+    let cancelled = false;
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        if (raw) {
-          const parsed = JSON.parse(raw) as DataState;
-          if (parsed && Array.isArray(parsed.cards) && parsed.person) {
-            setState(parsed);
-          }
+        if (cancelled) return;
+        const outcome = classifyStored(raw);
+        if (outcome.kind === 'loaded') {
+          setState(outcome.state);
+        } else if (outcome.kind === 'corrupt') {
+          // Preserve the unreadable blob before the seed overwrites the live
+          // key, so a partial/garbled write is recoverable rather than lost.
+          AsyncStorage.setItem(BACKUP_KEY, outcome.raw).catch(() => {});
         }
+        // 'first-boot': keep the blank seed already in `state`.
       })
       .catch(() => {
-        /* corrupted store → fall back to seed */
+        // The READ FAILED (transient native error) — distinct from "no data".
+        // Block saves: entering writable mode here would let the debounced save
+        // clobber the user's still-intact stored document with the seed (C1).
+        if (!cancelled) {
+          canSaveRef.current = false;
+          setPersistError('read');
+        }
       })
-      .finally(() => setReady(true));
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Write the latest committed state now, cancelling any pending debounce.
+  // Used by the background/unmount flush so the last <=400ms of changes (e.g.
+  // a just-finished session) are not dropped on an OS suspend/kill (M16).
+  const flushSave = useCallback(() => {
+    if (!canSaveRef.current) return;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    AsyncStorage.setItem(STORAGE_KEY, serialize(stateRef.current)).catch(() => {
+      setPersistError('write');
+    });
+  }, []);
+
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !canSaveRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => {});
+      saveTimer.current = null;
+      AsyncStorage.setItem(STORAGE_KEY, serialize(state)).catch(() => {
+        // Surface instead of swallowing: a failed write (e.g. quota on a large
+        // import) means data is not persisting (M15).
+        setPersistError('write');
+      });
     }, SAVE_DEBOUNCE_MS);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [state, ready]);
+
+  // Flush a pending write when the app backgrounds or the provider unmounts.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'background' || next === 'inactive') flushSave();
+    });
+    return () => {
+      sub.remove();
+      flushSave();
+    };
+  }, [flushSave]);
 
   /* ------------------------------------------------------------ rating */
 
@@ -596,6 +652,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const factoryReset = useCallback(() => {
     setLastCompletion(null);
     setState(buildSeedState(Date.now()));
+    // Recover from a prior read failure: a deliberate reset re-enables saving.
+    canSaveRef.current = true;
+    setPersistError(null);
     AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
   }, []);
 
@@ -647,8 +706,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo<DataValue>(
-    () => ({ ready, state, lastCompletion, actions }),
-    [ready, state, lastCompletion, actions],
+    () => ({ ready, state, lastCompletion, persistError, actions }),
+    [ready, state, lastCompletion, persistError, actions],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
