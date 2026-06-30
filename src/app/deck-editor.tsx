@@ -44,12 +44,15 @@ export default function DeckEditorScreen() {
     [state.cards, deck],
   );
   const otherDecks = state.decks.filter((d) => d.id !== deck?.id);
+  // With no other deck to move into, "move" is impossible — hide it and default
+  // to "keep" so the dialog can't sit on an unsatisfiable strategy (H2).
+  const canMove = otherDecks.length > 0;
 
   const [name, setName] = useState(deck?.name ?? '');
   const [lang, setLang] = useState<string | null>(deck?.lang ?? null);
   const [desc, setDesc] = useState(deck?.desc ?? '');
   const [delOpen, setDelOpen] = useState(false);
-  const [delMode, setDelMode] = useState<DelMode>('move');
+  const [delMode, setDelMode] = useState<DelMode>(canMove ? 'move' : 'keep');
   const [moveTarget, setMoveTarget] = useState(otherDecks[0]?.id ?? '');
 
   const save = () => {
@@ -100,9 +103,15 @@ export default function DeckEditorScreen() {
       actions.deleteDeck(deck.id, { kind: 'delete' });
       show('Deck and cards deleted');
     } else if (delMode === 'move') {
-      actions.deleteDeck(deck.id, { kind: 'move', targetDeckId: moveTarget });
       const target = state.decks.find((d) => d.id === moveTarget);
-      show(`Deck deleted — cards moved to ${target?.name ?? 'another deck'}`);
+      actions.deleteDeck(deck.id, { kind: 'move', targetDeckId: moveTarget });
+      // The reducer keeps cards in the library if the target turned out invalid;
+      // the message must match what actually happened, not what was requested.
+      show(
+        target
+          ? `Deck deleted — cards moved to ${target.name}`
+          : 'Deck deleted — cards kept in your library',
+      );
     } else {
       actions.deleteDeck(deck.id, { kind: 'keep' });
       show('Deck deleted — cards kept in your library');
@@ -110,7 +119,7 @@ export default function DeckEditorScreen() {
     router.back();
   };
 
-  const delOptions: { id: DelMode; icon: string; t: string; s: string }[] = [
+  const allDelOptions: { id: DelMode; icon: string; t: string; s: string }[] = [
     {
       id: 'move',
       icon: 'arrow-redo-outline',
@@ -130,6 +139,8 @@ export default function DeckEditorScreen() {
       s: 'Permanent — scheduling history is lost',
     },
   ];
+  // hide "move" entirely when there's no other deck to move into (H2)
+  const delOptions = allDelOptions.filter((o) => canMove || o.id !== 'move');
 
   return (
     <View style={{ flex: 1, backgroundColor: c.paper }}>

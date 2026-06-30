@@ -48,6 +48,7 @@ import {
 } from '@/domain/types';
 import { buildSeedState } from '@/domain/seed';
 import { catalogAddPlan, CURATED_DECKS, materializeCatalogDeck } from '@/domain/deckCatalog';
+import { DeleteStrategy, resolveDeckDeletion } from './deckOps';
 import { BACKUP_KEY, classifyStored, serialize, STORAGE_KEY } from './persistence';
 import { rollStreak, tallyReview, untallyReview } from './tally';
 
@@ -119,10 +120,7 @@ interface DataActions {
 
   addDeck: (fields: Pick<Deck, 'name'> & Partial<Deck>) => Deck;
   updateDeck: (deckId: string, patch: Partial<Deck>) => void;
-  deleteDeck: (
-    deckId: string,
-    strategy: { kind: 'delete' } | { kind: 'move'; targetDeckId: string } | { kind: 'keep' },
-  ) => void;
+  deleteDeck: (deckId: string, strategy: DeleteStrategy) => void;
   importDeck: (
     deck: Pick<Deck, 'name' | 'flag' | 'lang'> & Partial<Deck>,
     cards: (Pick<Card, 'word' | 'tr'> & Partial<Card>)[],
@@ -528,33 +526,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteDeck = useCallback<DataActions['deleteDeck']>((deckId, strategy) => {
-    setState((s) => {
-      let cards = s.cards;
-      let decks = s.decks.filter((d) => d.id !== deckId);
-      if (strategy.kind === 'delete') {
-        cards = cards.filter((c) => c.deckId !== deckId);
-      } else if (strategy.kind === 'move') {
-        cards = cards.map((c) => (c.deckId === deckId ? { ...c, deckId: strategy.targetDeckId } : c));
-      } else {
-        // keep: cards survive in an "Unfiled" deck created on demand
-        let unfiled = decks.find((d) => d.id === 'unfiled');
-        if (!unfiled) {
-          unfiled = {
-            id: 'unfiled',
-            name: 'Unfiled cards',
-            flag: '🗃️',
-            lang: '',
-            level: null,
-            builtin: false,
-            active: true,
-            createdAt: Date.now(),
-          };
-          decks = [...decks, unfiled];
-        }
-        cards = cards.map((c) => (c.deckId === deckId ? { ...c, deckId: 'unfiled' } : c));
-      }
-      return { ...s, cards, decks };
-    });
+    // The no-orphan invariant lives in resolveDeckDeletion (an invalid move
+    // target degrades to keep), so the reducer is just: resolve, then commit.
+    setState((s) => ({ ...s, ...resolveDeckDeletion(s, deckId, strategy, Date.now()) }));
   }, []);
 
   const importDeck = useCallback<DataActions['importDeck']>((deckFields, cardFields) => {

@@ -4,8 +4,8 @@
  * recording itself is staged UI; the capture backend is WIRING.md C4 work),
  * and a guarded delete. Saves write the store for real.
  */
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 
 import {
@@ -56,6 +56,7 @@ export default function CardEditorScreen() {
   const [recorded, setRecorded] = useState(editing);
   const [recording, setRecording] = useState(false);
   const [guard, setGuard] = useState(false);
+  const [delConfirm, setDelConfirm] = useState(false);
 
   const dirty = editing
     ? word !== card.word ||
@@ -68,6 +69,22 @@ export default function CardEditorScreen() {
       deck !== card.deckId
     : !!(word || tr || ex || ipa);
   const valid = word.trim().length > 0 && tr.trim().length > 0 && deck.length > 0;
+
+  // The header back button is guarded below, but Android hardware-back and the
+  // iOS edge-swipe slip past it and silently discard edits. `beforeRemove`
+  // intercepts EVERY exit cause; `leaving` lets the intentional exits (save,
+  // delete, confirmed discard) through so the guard never blocks its own
+  // navigation and traps the user (M9).
+  const navigation = useNavigation();
+  const leaving = useRef(false);
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      if (!dirty || leaving.current) return;
+      e.preventDefault();
+      setGuard(true);
+    });
+    return unsub;
+  }, [navigation, dirty]);
 
   const record = () => {
     setRecording(true);
@@ -100,6 +117,7 @@ export default function CardEditorScreen() {
       actions.addCard(deck, fields);
       show(`“${word.trim()}” added`);
     }
+    leaving.current = true; // intentional exit — don't let the guard intercept
     router.back();
   };
 
@@ -298,11 +316,7 @@ export default function CardEditorScreen() {
               title="Delete this card"
               sub="Its scheduling history goes with it"
               last
-              onPress={() => {
-                actions.deleteCard(card.id);
-                show(`“${card.word}” deleted`);
-                router.back();
-              }}
+              onPress={() => setDelConfirm(true)}
             />
           </View>
         )}
@@ -322,11 +336,39 @@ export default function CardEditorScreen() {
             full
             style={{ flex: 1 }}
             onPress={() => {
+              leaving.current = true; // confirmed discard — let this exit through
               setGuard(false);
               router.back();
             }}
           >
             Discard
+          </Btn>
+        </View>
+      </Sheet>
+
+      {/* guarded delete (L6) — destructive, so it confirms before removing */}
+      <Sheet open={delConfirm} onClose={() => setDelConfirm(false)} title="Delete this card?">
+        <Text style={[font('sans', 400), { fontSize: 14.5, color: c.ink2, marginBottom: 18 }]}>
+          “{card?.word}” and its scheduling history will be permanently removed.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Btn kind="secondary" full style={{ flex: 1 }} onPress={() => setDelConfirm(false)}>
+            Cancel
+          </Btn>
+          <Btn
+            kind="dangerSolid"
+            full
+            style={{ flex: 1 }}
+            onPress={() => {
+              if (!card) return;
+              setDelConfirm(false);
+              leaving.current = true; // the card is gone — don't re-prompt on the way out
+              actions.deleteCard(card.id);
+              show(`“${card.word}” deleted`);
+              router.back();
+            }}
+          >
+            Delete card
           </Btn>
         </View>
       </Sheet>
