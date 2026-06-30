@@ -26,7 +26,7 @@ import {
   Pill,
 } from '@/components/ui';
 import { levelInfo } from '@/domain/gamification';
-import { collectionFilter, computeReady } from '@/domain/queue';
+import { activeCardPool, collectionFilter, computeReady } from '@/domain/queue';
 import { addDays, CefrLevel, dayKeyOf } from '@/domain/types';
 import { normalizedDayDone, useAchievements, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
@@ -79,7 +79,12 @@ export default function StatsScreen() {
     const totalCards = state.cards.length;
     const masteryPct = totalCards ? Math.round((mastered / totalCards) * 100) : 0;
 
-    const ready = computeReady(state.cards, state.settings.srs, dayDone, now);
+    const ready = computeReady(
+      activeCardPool(state.cards, state.decks),
+      state.settings.srs,
+      dayDone,
+      now,
+    );
     const weak = state.cards.filter((x) => collectionFilter('hardest')(x, now)).length;
 
     // retention over the last 10 sessions

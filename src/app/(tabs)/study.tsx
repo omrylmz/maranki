@@ -25,7 +25,7 @@ import {
   ScreenHead,
   SectionHead,
 } from '@/components/ui';
-import { collectionStats, computeReady, deckStats } from '@/domain/queue';
+import { activeCardPool, collectionStats, computeReady, deckStats } from '@/domain/queue';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { useSnackbar } from '@/store/SnackbarContext';
@@ -49,15 +49,14 @@ export default function StudyScreen() {
   const paused = state.decks.filter((d) => !d.active);
   const noDecks = state.decks.length === 0;
 
-  const ready = useMemo(() => {
-    const activeIds = new Set(active.map((d) => d.id));
-    return computeReady(
-      state.cards.filter((card) => activeIds.has(card.deckId)),
-      state.settings.srs,
-      dayDone,
-      now,
-    );
-  }, [state.cards, active, state.settings.srs, dayDone, now]);
+  const activePool = useMemo(
+    () => activeCardPool(state.cards, state.decks),
+    [state.cards, state.decks],
+  );
+  const ready = useMemo(
+    () => computeReady(activePool, state.settings.srs, dayDone, now),
+    [activePool, state.settings.srs, dayDone, now],
+  );
 
   const startAll = () =>
     router.push({ pathname: '/session', params: { kind: 'scheduled', label: 'All decks' } });
@@ -182,7 +181,7 @@ export default function StudyScreen() {
                       })
                     }
                   >
-                    Study {s.due}
+                    Study {s.sessionCount}
                   </Btn>
                 ) : (
                   <Ion name="checkmark-circle" size={19} color={c.success} style={{ opacity: 0.65 }} />
@@ -256,7 +255,7 @@ export default function StudyScreen() {
         </SectionHead>
         <View>
           {state.collections.map((col, i) => {
-            const s = collectionStats(state.cards, col, now);
+            const s = collectionStats(activePool, col, state.settings.srs, dayDone, now);
             return (
               <Row
                 key={col.id}
@@ -295,7 +294,7 @@ export default function StudyScreen() {
                       })
                     }
                   >
-                    Study {s.due}
+                    Study {s.sessionCount}
                   </Btn>
                 ) : (
                   <Ion name="checkmark-circle" size={19} color={c.success} style={{ opacity: 0.65 }} />

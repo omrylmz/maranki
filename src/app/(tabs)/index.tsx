@@ -28,7 +28,7 @@ import {
   SegBar,
   StreakChip,
 } from '@/components/ui';
-import { buildQueue, computeReady, deckStats } from '@/domain/queue';
+import { activeCardPool, buildQueue, computeReady, deckStats } from '@/domain/queue';
 import { dayKeyOf } from '@/domain/types';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
@@ -66,10 +66,10 @@ export default function HomeScreen() {
   const activeDecks = useMemo(() => state.decks.filter((d) => d.active), [state.decks]);
   const pausedCount = state.decks.length - activeDecks.length;
   const noDecks = state.decks.length === 0;
-  const activeCards = useMemo(() => {
-    const activeIds = new Set(activeDecks.map((d) => d.id));
-    return state.cards.filter((card) => activeIds.has(card.deckId));
-  }, [state.cards, activeDecks]);
+  const activeCards = useMemo(
+    () => activeCardPool(state.cards, state.decks),
+    [state.cards, state.decks],
+  );
 
   const ready = useMemo(
     () => computeReady(activeCards, state.settings.srs, dayDone, now),
@@ -495,7 +495,7 @@ export default function HomeScreen() {
                     })}
                   >
                     <Text style={[font('sans', 800), tnum, { fontSize: 16, color: c.pine }]}>
-                      {s.due}
+                      {s.sessionCount}
                     </Text>
                     <Text
                       style={[
@@ -508,7 +508,7 @@ export default function HomeScreen() {
                         },
                       ]}
                     >
-                      due
+                      ready
                     </Text>
                   </Pressable>
                 ) : (
