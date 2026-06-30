@@ -71,6 +71,7 @@ export default function StatsScreen() {
   const today = dayKeyOf(now);
   const dayDone = normalizedDayDone(state.person, now);
   const level = levelInfo(state.person.xp);
+  const noCards = state.cards.length === 0;
 
   const derived = useMemo(() => {
     const graduated = state.cards.filter((x) => x.reps > 0 && x.stepIndex === null);
@@ -85,7 +86,8 @@ export default function StatsScreen() {
     const recent = state.sessions.slice(-10);
     const rTotal = recent.reduce((s, x) => s + x.total, 0);
     const rCorrect = recent.reduce((s, x) => s + (x.total - x.counts.again), 0);
-    const retention = rTotal ? Math.round((rCorrect / rTotal) * 100) : 100;
+    // null = no reviews yet, so the UI can say so instead of a misleading 100%
+    const retention = rTotal ? Math.round((rCorrect / rTotal) * 100) : null;
 
     // reviews per day for the heatmap
     const perDay = new Map<string, number>();
@@ -116,6 +118,7 @@ export default function StatsScreen() {
 
     // mastery by CEFR level (only levels present)
     const byLevel = LEVELS.map((l) => {
+      // null-level (imported) cards never equal a CEFR level, so they're intentionally excluded
       const pool = state.cards.filter((x) => x.level === l);
       const m = pool.filter((x) => x.reps > 0 && x.stepIndex === null && x.intervalDays >= 21).length;
       return { level: l, count: pool.length, pct: pool.length ? Math.round((m / pool.length) * 100) : 0 };
@@ -251,58 +254,62 @@ export default function StatsScreen() {
         </CardBox>
       </View>
 
-      {/* actionable metrics (C5) */}
-      <SectionHead>Today</SectionHead>
-      <Row onPress={startSession} padV={13}>
-        <View
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 10,
-            backgroundColor: c.pineTint,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ion name="time-outline" size={17} color={c.pine} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[font('sans', 700), tnum, { fontSize: 14.5, color: c.ink }]}>
-            {derived.ready.due + derived.ready.learning} cards due
-          </Text>
-          <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
-            {dayDone.reviews} studied so far today
-          </Text>
-        </View>
-        <Btn size="sm" onPress={startSession}>
-          Start
-        </Btn>
-      </Row>
-      <Row onPress={reviewWeak} padV={13} last>
-        <View
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 10,
-            backgroundColor: c.warningTint,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ion name="trending-down" size={17} color={c.warning} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[font('sans', 700), tnum, { fontSize: 14.5, color: c.ink }]}>
-            Retention at {derived.retention}%
-          </Text>
-          <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
-            {derived.weak} weak cards could use a review
-          </Text>
-        </View>
-        <Btn size="sm" kind="secondary" onPress={reviewWeak}>
-          Review
-        </Btn>
-      </Row>
+      {/* actionable metrics (C5) — only meaningful once there are cards */}
+      {!noCards && (
+        <>
+          <SectionHead>Today</SectionHead>
+          <Row onPress={startSession} padV={13}>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: c.pineTint,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ion name="time-outline" size={17} color={c.pine} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[font('sans', 700), tnum, { fontSize: 14.5, color: c.ink }]}>
+                {derived.ready.due + derived.ready.learning} cards due
+              </Text>
+              <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
+                {dayDone.reviews} studied so far today
+              </Text>
+            </View>
+            <Btn size="sm" onPress={startSession}>
+              Start
+            </Btn>
+          </Row>
+          <Row onPress={reviewWeak} padV={13} last>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                backgroundColor: c.warningTint,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ion name="trending-down" size={17} color={c.warning} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[font('sans', 700), tnum, { fontSize: 14.5, color: c.ink }]}>
+                {derived.retention == null ? 'No reviews yet' : `Retention at ${derived.retention}%`}
+              </Text>
+              <Text style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
+                {derived.weak} weak cards could use a review
+              </Text>
+            </View>
+            <Btn size="sm" kind="secondary" onPress={reviewWeak}>
+              Review
+            </Btn>
+          </Row>
+        </>
+      )}
 
       {/* activity */}
       <SectionHead

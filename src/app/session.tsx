@@ -20,6 +20,7 @@ import {
   LevelBadge,
   ListRow,
   Pill,
+  TypePill,
   RiseIn,
   Sheet,
   SnackbarView,
@@ -410,7 +411,7 @@ export default function SessionScreen() {
             >
               {/* card top row */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <LevelBadge level={card.level} />
+                {card.level != null && <LevelBadge level={card.level} />}
                 {step ? (
                   <Pill mono fg={c.amberDeep} bg={c.amberTint}>
                     step {step}
@@ -528,9 +529,11 @@ export default function SessionScreen() {
                         {card.exTr}
                       </Text>
                     ) : null}
-                    <View style={{ marginTop: 16 }}>
-                      <Pill>{card.type}</Pill>
-                    </View>
+                    {card.type != null ? (
+                      <View style={{ marginTop: 16 }}>
+                        <TypePill type={card.type} />
+                      </View>
+                    ) : null}
                   </View>
                 </RiseIn>
               )}

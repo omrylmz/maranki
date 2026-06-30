@@ -39,8 +39,10 @@ export interface Card {
   ex?: string;
   /** Example translation. */
   exTr?: string;
-  level: CefrLevel;
-  type: WordType;
+  /** CEFR level, or null when the source carries no such metadata (e.g. an import). */
+  level: CefrLevel | null;
+  /** Part of speech, or null when the source carries no such metadata (e.g. an import). */
+  type: WordType | null;
   lang: Lang;
   tags?: string[];
   fav?: boolean;

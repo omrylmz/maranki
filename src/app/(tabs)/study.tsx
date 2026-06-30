@@ -10,17 +10,17 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CreateSheet } from '@/components/sheets/CreateSheet';
+import { AddDeckSheet } from '@/components/sheets/AddDeckSheet';
 import { PeekSheet, PeekTarget } from '@/components/sheets/PeekSheet';
 import {
   Btn,
   CardBox,
+  DeckTag,
+  DeckTile,
   FAB,
-  FlagSq,
   IconBtn,
   Ion,
   Page,
-  Pill,
   Row,
   ScreenHead,
   SectionHead,
@@ -47,6 +47,7 @@ export default function StudyScreen() {
   const dayDone = normalizedDayDone(state.person, now);
   const active = state.decks.filter((d) => d.active);
   const paused = state.decks.filter((d) => !d.active);
+  const noDecks = state.decks.length === 0;
 
   const ready = useMemo(() => {
     const activeIds = new Set(active.map((d) => d.id));
@@ -79,6 +80,7 @@ export default function StudyScreen() {
         />
 
         {/* aggregate command */}
+        {!noDecks && (
         <CardBox
           onPress={startAll}
           style={{
@@ -114,10 +116,35 @@ export default function StudyScreen() {
           </View>
           <Ion name="chevron-forward" size={17} color={c.ink3} />
         </CardBox>
+        )}
 
         {/* decks */}
         <SectionHead>Decks</SectionHead>
         <View>
+          {noDecks && (
+            <View style={{ alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16 }}>
+              <Ion name="albums-outline" size={34} color={c.ink3} />
+              <Text
+                style={[
+                  font('serif', 600),
+                  { fontSize: 18, color: c.ink, marginTop: 12, marginBottom: 4, textAlign: 'center' },
+                ]}
+              >
+                No decks yet
+              </Text>
+              <Text
+                style={[
+                  font('sans', 400),
+                  { fontSize: 13, color: c.ink3, marginBottom: 16, textAlign: 'center', lineHeight: 19 },
+                ]}
+              >
+                Add a curated deck by language, create your own, or import from a file.
+              </Text>
+              <Btn icon="add" onPress={() => setCreateOpen(true)}>
+                Add a deck
+              </Btn>
+            </View>
+          )}
           {active.map((d, i) => {
             const s = deckStats(state.cards, d.id, state.settings.srs, dayDone, now);
             return (
@@ -127,7 +154,7 @@ export default function StudyScreen() {
                 padV={14}
                 last={i === active.length - 1 && !paused.length}
               >
-                <FlagSq flag={d.flag} size={36} />
+                <DeckTile flag={d.flag} size={36} builtin={d.builtin} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                     <Text
@@ -136,11 +163,7 @@ export default function StudyScreen() {
                     >
                       {d.name}
                     </Text>
-                    {!d.builtin && (
-                      <Pill fg={c.info} bg={c.infoTint}>
-                        imported
-                      </Pill>
-                    )}
+                    <DeckTag builtin={d.builtin} />
                   </View>
                   <Text
                     style={[font('sans', 400), tnum, { fontSize: 12.5, color: c.ink3, marginTop: 2 }]}
@@ -195,14 +218,17 @@ export default function StudyScreen() {
                       last={i === paused.length - 1}
                       style={{ opacity: 0.75 }}
                     >
-                      <FlagSq flag={d.flag} size={34} />
+                      <DeckTile flag={d.flag} size={34} builtin={d.builtin} />
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text
-                          numberOfLines={1}
-                          style={[font('sans', 700), { fontSize: 14.5, color: c.ink2 }]}
-                        >
-                          {d.name}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                          <Text
+                            numberOfLines={1}
+                            style={[font('sans', 700), { fontSize: 14.5, color: c.ink2, flexShrink: 1 }]}
+                          >
+                            {d.name}
+                          </Text>
+                          <DeckTag builtin={d.builtin} />
+                        </View>
                         <Text style={[font('sans', 400), tnum, { fontSize: 12, color: c.ink3 }]}>
                           {s.total.toLocaleString('en-US')} cards
                         </Text>
@@ -282,7 +308,7 @@ export default function StudyScreen() {
 
       <FAB onPress={() => setCreateOpen(true)} bottom={TABBAR_HEIGHT + insets.bottom + 18} />
       <PeekSheet target={peek} onClose={() => setPeek(null)} />
-      <CreateSheet open={createOpen} onClose={() => setCreateOpen(false)} />
+      <AddDeckSheet open={createOpen} onClose={() => setCreateOpen(false)} scope="all" />
     </>
   );
 }

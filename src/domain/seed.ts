@@ -1,39 +1,26 @@
 /**
- * First-run seed content. The numbers stay HONEST: deck counts derive from
- * the cards that actually exist (no fake "5000"), SRS states are spread so
- * the dashboard, launchpad and library look lived-in on first boot, and the
- * activity history backs the heatmap/streak strip.
+ * First-run state and the curated deck corpus.
  *
- * Sample vocabulary expands the corpus in design/ui_kits/app-v2/data.jsx.
+ * Maranki opens as a BLANK SLATE: buildSeedState() returns no decks, no cards
+ * and zeroed stats — curated decks are NEVER auto-added. The built-in,
+ * filter-ready vocabulary still lives here as DECK_SEEDS (the catalog corpus);
+ * deckCatalog.ts re-shapes it into a by-language catalog that onboarding and the
+ * "Add a deck" sheet materialize on demand via DataContext.addCatalogDeck.
  */
 import {
   AppSettings,
-  Card,
   CefrLevel,
   Collection,
   DataState,
-  DAY,
   dayKeyOf,
   DEFAULT_APP_SETTINGS,
   Deck,
   Lang,
-  MIN,
   Person,
-  Rating,
-  SessionRecord,
   WordType,
 } from './types';
 
-/* Deterministic tiny PRNG so the seed is stable run-to-run. */
-function lcg(seed: number) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 0xffffffff;
-  };
-}
-
-type Spec = [
+export type Spec = [
   word: string,
   tr: string,
   ipa: string,
@@ -42,17 +29,6 @@ type Spec = [
   level: CefrLevel,
   type: WordType,
 ];
-
-const ARTICLES = ['der', 'die', 'das', 'el', 'la', 'los', 'las', 'le', 'la', 'les'];
-
-function splitArticle(word: string): { article: string | null; base: string } {
-  const sp = word.indexOf(' ');
-  if (sp > 0) {
-    const head = word.slice(0, sp);
-    if (ARTICLES.includes(head)) return { article: head, base: word.slice(sp + 1) };
-  }
-  return { article: null, base: word };
-}
 
 /* ------------------------------------------------------------- corpora */
 
@@ -171,232 +147,65 @@ const FR_BASICS: Spec[] = [
 
 /* ------------------------------------------------------------ assembly */
 
+/** A curated deck definition: metadata + the vocabulary specs. This is the
+ *  catalog corpus — no SRS state lives here. `active` is omitted: catalog decks
+ *  are inert until added, and buildCatalogCards mints fresh cards on add. */
 interface DeckSeed {
-  deck: Omit<Deck, 'createdAt'>;
+  deck: Omit<Deck, 'createdAt' | 'active'>;
   specs: Spec[];
   lang: Lang;
-  /** [mastered, review, learning, new] proportions by index order. */
-  mix: [number, number, number, number];
-  /** How many of the review cards should already be due. */
-  dueReviews: number;
-  dueLearning: number;
 }
 
-const DECK_SEEDS: DeckSeed[] = [
+export const DECK_SEEDS: DeckSeed[] = [
   {
-    deck: { id: 'de-everyday', name: 'German — Everyday', flag: '🇩🇪', lang: 'German', level: 'A1', builtin: true, active: true },
+    deck: { id: 'de-everyday', name: 'German — Everyday', flag: '🇩🇪', lang: 'German', level: 'A1', builtin: true },
     specs: DE_EVERYDAY,
     lang: 'de',
-    mix: [18, 12, 4, 10],
-    dueReviews: 8,
-    dueLearning: 3,
   },
   {
-    deck: { id: 'de-conversation', name: 'German — Conversation', flag: '🇩🇪', lang: 'German', level: 'B1', builtin: true, active: true },
+    deck: { id: 'de-conversation', name: 'German — Conversation', flag: '🇩🇪', lang: 'German', level: 'B1', builtin: true },
     specs: DE_CONVERSATION,
     lang: 'de',
-    mix: [6, 8, 2, 8],
-    dueReviews: 4,
-    dueLearning: 1,
   },
   {
-    deck: { id: 'es-sentences', name: 'Spanish — Core Sentences', flag: '🇪🇸', lang: 'Spanish', level: null, builtin: false, active: true },
+    deck: { id: 'es-sentences', name: 'Spanish — Core Sentences', flag: '🇪🇸', lang: 'Spanish', level: null, builtin: true },
     specs: ES_SENTENCES,
     lang: 'es',
-    mix: [4, 5, 1, 6],
-    dueReviews: 2,
-    dueLearning: 1,
   },
   {
-    deck: { id: 'es-travel', name: 'Spanish — Travel', flag: '🇪🇸', lang: 'Spanish', level: 'B1', builtin: true, active: false },
+    deck: { id: 'es-travel', name: 'Spanish — Travel', flag: '🇪🇸', lang: 'Spanish', level: 'B1', builtin: true },
     specs: ES_TRAVEL,
     lang: 'es',
-    mix: [4, 2, 0, 2],
-    dueReviews: 0,
-    dueLearning: 0,
   },
   {
-    deck: { id: 'fr-basics', name: 'French — Basics', flag: '🇫🇷', lang: 'French', level: 'A1', builtin: true, active: false },
+    deck: { id: 'fr-basics', name: 'French — Basics', flag: '🇫🇷', lang: 'French', level: 'A1', builtin: true },
     specs: FR_BASICS,
     lang: 'fr',
-    mix: [0, 0, 0, 6],
-    dueReviews: 0,
-    dueLearning: 0,
   },
 ];
 
-function buildCards(now: number): Card[] {
-  const rnd = lcg(0x5eed);
-  const cards: Card[] = [];
-
-  DECK_SEEDS.forEach((seed, deckIdx) => {
-    const [nMastered, nReview, nLearning] = seed.mix;
-    let dueReviewsLeft = seed.dueReviews;
-    let dueLearningLeft = seed.dueLearning;
-
-    seed.specs.forEach((spec, i) => {
-      const [word, tr, ipa, ex, exTr, level, type] = spec;
-      const { article, base } = splitArticle(word);
-      const createdAt = now - (200 - i * 2 - deckIdx * 10) * DAY;
-      const id = `${seed.deck.id}-${i + 1}`;
-
-      const common = {
-        id,
-        deckId: seed.deck.id,
-        word,
-        article,
-        base,
-        tr,
-        ipa,
-        ex,
-        exTr,
-        level,
-        type,
-        lang: seed.lang,
-        fav: rnd() < 0.12,
-        flagged: false,
-        suspended: false,
-        buriedUntil: null,
-        createdAt,
-      };
-
-      let card: Card;
-      if (i < nMastered) {
-        // mastered: interval ≥ 21d, mostly scheduled in the future
-        const interval = 21 + Math.floor(rnd() * 100);
-        const overdue = dueReviewsLeft > 0 && rnd() < 0.35;
-        if (overdue) dueReviewsLeft -= 1;
-        card = {
-          ...common,
-          ease: 2.5 + Math.round(rnd() * 4) * 0.05,
-          intervalDays: interval,
-          stepIndex: null,
-          reps: 8 + Math.floor(rnd() * 12),
-          lapses: Math.floor(rnd() * 2),
-          due: overdue ? now - Math.floor(rnd() * 2) * DAY : now + Math.floor(rnd() * interval * 0.8 + 1) * DAY,
-          lastReviewedAt: now - interval * DAY,
-        };
-      } else if (i < nMastered + nReview) {
-        // young review cards: 2–14d intervals
-        const interval = 2 + Math.floor(rnd() * 12);
-        const overdue = dueReviewsLeft > 0;
-        if (overdue) dueReviewsLeft -= 1;
-        card = {
-          ...common,
-          ease: 2.1 + Math.round(rnd() * 6) * 0.05,
-          intervalDays: interval,
-          stepIndex: null,
-          reps: 3 + Math.floor(rnd() * 5),
-          lapses: rnd() < 0.4 ? 1 : 0,
-          due: overdue ? now - Math.floor(rnd() * 18) * 3_600_000 : now + Math.floor(rnd() * interval * 0.7 + 1) * DAY,
-          lastReviewedAt: now - interval * DAY,
-        };
-      } else if (i < nMastered + nReview + nLearning) {
-        // in learning steps
-        const step = rnd() < 0.5 ? 0 : 1;
-        const dueNow = dueLearningLeft > 0;
-        if (dueNow) dueLearningLeft -= 1;
-        card = {
-          ...common,
-          ease: 2.5,
-          intervalDays: 0,
-          stepIndex: step,
-          reps: 1 + step,
-          lapses: 0,
-          due: dueNow ? now - 5 * MIN : now + (10 + Math.floor(rnd() * 50)) * MIN,
-          lastReviewedAt: now - 30 * MIN,
-        };
-      } else {
-        // brand new
-        card = {
-          ...common,
-          ease: 2.5,
-          intervalDays: 0,
-          stepIndex: null,
-          reps: 0,
-          lapses: 0,
-          due: now,
-          lastReviewedAt: null,
-        };
-      }
-      cards.push(card);
-    });
-  });
-
-  return cards;
-}
-
-/* History: ~5 weeks of sessions feeding the heatmap, streak strip and
-   all-time ledger. The current streak is 12 days with one freeze used. */
-function buildHistory(now: number): { sessions: SessionRecord[]; freezeUsedDays: string[] } {
-  const rnd = lcg(0xacc1);
-  const sessions: SessionRecord[] = [];
-  const freezeUsedDays: string[] = [];
-  const today = dayKeyOf(now);
-
-  for (let back = 34; back >= 0; back--) {
-    const dayMs = now - back * DAY;
-    const dayKey = dayKeyOf(dayMs);
-    // one frozen day inside the current streak, one true miss before it
-    if (back === 6) {
-      freezeUsedDays.push(dayKey);
-      continue;
-    }
-    if (back === 12 || back === 19 || back === 26) continue; // missed days
-    const n = back === 0 ? 1 : 1 + (rnd() < 0.25 ? 1 : 0);
-    for (let s = 0; s < n; s++) {
-      const total = 8 + Math.floor(rnd() * 18);
-      const again = Math.floor(total * (0.05 + rnd() * 0.15));
-      const easy = Math.floor(total * (0.1 + rnd() * 0.15));
-      const hard = Math.floor(total * (0.08 + rnd() * 0.12));
-      const good = total - again - easy - hard;
-      const counts: Record<Rating, number> = { again, hard, good, easy };
-      const xp = total * 2 + (total - again) * 2 + 10;
-      sessions.push({
-        id: `seed-s-${back}-${s}`,
-        dayKey,
-        atMs: dayMs - (2 - s) * 3 * 3_600_000,
-        kind: 'scheduled',
-        counts,
-        total,
-        bestRun: 3 + Math.floor(rnd() * 7),
-        xp,
-      });
-    }
-  }
-  // make "today" reflect the seeded dayDone (14 reviews so far)
-  const todaySession = sessions[sessions.length - 1];
-  if (todaySession && todaySession.dayKey === today) {
-    todaySession.total = 14;
-    todaySession.counts = { again: 1, hard: 2, good: 8, easy: 3 };
-    todaySession.xp = 14 * 2 + 13 * 2 + 10;
-  }
-  return { sessions, freezeUsedDays };
-}
-
 export function buildSeedState(now: number): DataState {
-  const { sessions, freezeUsedDays } = buildHistory(now);
   const today = dayKeyOf(now);
 
+  // A brand-new learner: nothing studied, nothing added. Curated decks are
+  // materialized on demand (onboarding's language pick, or the "Add a deck"
+  // sheet) — never seeded here. See deckCatalog.ts for the catalog view.
   const person: Person = {
-    xp: 2780, // level 7 "Wordsmith", 160 XP to level 8
-    streak: 12,
-    bestStreak: 23,
-    freezes: 2,
-    freezeUsedDays,
-    lastStudyDay: today,
+    xp: 0,
+    streak: 0,
+    bestStreak: 0,
+    freezes: 0,
+    freezeUsedDays: [],
+    lastStudyDay: '',
     goalReviews: 30,
     goalNew: 10,
-    dayDone: { dayKey: today, reviews: 14, neww: 3 },
-    fastAnswers: 63,
-    achievements: {
-      'first-steps': now - 39 * DAY,
-      'week-warrior': now - 23 * DAY,
-      centurion: now - 17 * DAY,
-      'quick-draw': now - 11 * DAY,
-    },
+    dayDone: { dayKey: today, reviews: 0, neww: 0 },
+    fastAnswers: 0,
+    achievements: {},
   };
 
+  // Collections are saved smart filters (live queries), not folders — they own
+  // no cards, so they're meaningful from the very first launch.
   const collections: Collection[] = [
     { id: 'hard', name: 'Hardest cards', icon: 'flame', desc: 'Lowest ease across decks', query: 'hardest' },
     { id: 'fav', name: 'Favorites', icon: 'heart', desc: 'Cards you starred', query: 'favorites' },
@@ -406,11 +215,11 @@ export function buildSeedState(now: number): DataState {
   const settings: AppSettings = JSON.parse(JSON.stringify(DEFAULT_APP_SETTINGS));
 
   return {
-    cards: buildCards(now),
-    decks: DECK_SEEDS.map((s, i) => ({ ...s.deck, createdAt: now - (120 - i * 10) * DAY })),
+    cards: [],
+    decks: [],
     collections,
     person,
-    sessions,
+    sessions: [],
     reviewLog: [],
     settings,
     onboarded: false,

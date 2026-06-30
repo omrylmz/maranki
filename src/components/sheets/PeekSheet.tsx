@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
 
-import { Btn, FlagSq, Ion, SegBar, Sheet } from '@/components/ui';
+import { Btn, DeckTag, DeckTile, Ion, SegBar, Sheet } from '@/components/ui';
 import { collectionStats, deckStats } from '@/domain/queue';
 import { Collection, Deck } from '@/domain/types';
 import { normalizedDayDone, useData } from '@/store/DataContext';
@@ -117,16 +117,19 @@ export function PeekSheet({ target, onClose }: PeekSheetProps) {
             <Ion name={target.collection.icon} size={20} color={c.pine} />
           </View>
         ) : (
-          <FlagSq flag={target.deck.flag} size={44} />
+          <DeckTile flag={target.deck.flag} size={44} builtin={target.deck.builtin} ring={c.surface} />
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[font('serif', 600), { fontSize: 21, color: c.ink, lineHeight: 24 }]}>
             {info.name}
           </Text>
-          <Text style={[font('sans', 400), tnum, { fontSize: 13, color: c.ink3, marginTop: 2 }]}>
-            {info.count.toLocaleString('en-US')} cards
-            {info.due > 0 ? ` · ${info.due} due now` : ' · caught up'}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            {!isColl && <DeckTag builtin={target.deck.builtin} />}
+            <Text style={[font('sans', 400), tnum, { fontSize: 13, color: c.ink3 }]}>
+              {info.count.toLocaleString('en-US')} cards
+              {info.due > 0 ? ` · ${info.due} due now` : ' · caught up'}
+            </Text>
+          </View>
         </View>
       </View>
 

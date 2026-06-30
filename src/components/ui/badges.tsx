@@ -1,11 +1,12 @@
 /**
- * Badges & chips: CEFR level pills, card-state dots/badges, filter chips,
- * the streak chip with freeze count, and the deck flag square.
+ * Badges & chips: CEFR level pills, part-of-speech pills, card-state
+ * dots/badges, filter chips, the streak chip with freeze count, the deck flag
+ * square, and the deck-provenance tile/tag (curated vs imported).
  */
 import React from 'react';
 import { Pressable, StyleProp, Text, View, ViewStyle } from 'react-native';
 
-import { CardState, CefrLevel } from '@/domain/types';
+import { CardState, CefrLevel, WordType } from '@/domain/types';
 import { font, tnum } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
 
@@ -155,6 +156,16 @@ export function Pill({ children, fg, bg, mono, style }: PillProps) {
   );
 }
 
+/**
+ * The card's part of speech, as a pill. Takes a NON-null WordType on purpose:
+ * imported cards leave `type` null, so this mirrors LevelBadge on the level
+ * axis — the compiler refuses an ungated `card.type`, keeping the empty-pill
+ * regression from ever coming back.
+ */
+export function TypePill({ type }: { type: WordType }) {
+  return <Pill>{type}</Pill>;
+}
+
 export function StreakChip({
   days,
   freezes = 0,
@@ -209,6 +220,101 @@ export function FlagSq({ flag, size = 38 }: { flag: string; size?: number }) {
       }}
     >
       <Text style={{ fontSize: size * 0.5 }}>{flag}</Text>
+    </View>
+  );
+}
+
+/* ----------------------------------------------------------- deck provenance */
+// Single source of truth for "curated vs imported", shown on every deck surface
+// (Home, Study, peek). Driven by deck.builtin, NOT the flag emoji: AnkiWeb
+// imports keep a country flag, so the emoji can't signal origin. The map carries
+// the entire role — glyph, label, and the fg/bg color KEYS — so DeckTag and
+// DeckTile resolve identical visuals via useColors() and can't drift apart.
+// Curated reads pine (the brand); imported reads info-blue. Glyphs: leaf
+// (evergreen → curated) and download (echoes the import action → imported).
+
+const PROVENANCE = {
+  curated: { glyph: 'leaf', label: 'Curated', fg: 'pine', bg: 'pineTint' },
+  imported: { glyph: 'download', label: 'Imported', fg: 'info', bg: 'infoTint' },
+} as const;
+
+/**
+ * DeckTag — the explicit half: a glyph + label chip (e.g. leaf + "Curated").
+ * Glyph, label, and color all come from PROVENANCE so the chip can't desync.
+ * Its counterpart <DeckTile> is the text-free corner seal.
+ */
+export function DeckTag({ builtin }: { builtin: boolean }) {
+  const c = useColors();
+  const p = builtin ? PROVENANCE.curated : PROVENANCE.imported;
+  const fg = c[p.fg];
+  const bg = c[p.bg];
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: bg,
+        paddingVertical: 2.5,
+        paddingHorizontal: 7,
+        borderRadius: 999,
+        alignSelf: 'flex-start',
+      }}
+    >
+      <Ion name={p.glyph} size={9.5} color={fg} />
+      <Text style={[font('sans', 800), { fontSize: 10.5, color: fg, letterSpacing: 0.2 }]}>
+        {p.label}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Deck identity tile = flag square + a provenance seal in the corner. The seal
+ * is the glanceable half (no text needed). `ring` should match the surface
+ * BEHIND the tile so the seal reads as a sticker — paper on list rows (default),
+ * surface inside a sheet.
+ */
+export function DeckTile({
+  flag,
+  builtin,
+  size = 38,
+  ring,
+  seal = true,
+}: {
+  flag: string;
+  builtin: boolean;
+  size?: number;
+  ring?: string;
+  seal?: boolean;
+}) {
+  const c = useColors();
+  const d = Math.max(15, Math.round(size * 0.44));
+  const p = builtin ? PROVENANCE.curated : PROVENANCE.imported;
+  const fg = c[p.fg];
+  const bg = c[p.bg];
+  return (
+    <View style={{ width: size, height: size }}>
+      <FlagSq flag={flag} size={size} />
+      {seal && (
+        <View
+          style={{
+            position: 'absolute',
+            right: -3,
+            bottom: -3,
+            width: d,
+            height: d,
+            borderRadius: 999,
+            backgroundColor: bg,
+            borderWidth: 2,
+            borderColor: ring ?? c.paper,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ion name={p.glyph} size={Math.round(d * 0.56)} color={fg} />
+        </View>
+      )}
     </View>
   );
 }

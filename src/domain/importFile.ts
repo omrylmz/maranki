@@ -290,16 +290,20 @@ function isHeaderRow(row: string[]): boolean {
   return HEADER_FIRST_CELLS.has(leadingToken(row[0] ?? ''));
 }
 
-/** Clamp free text to a CEFR level (default A1); tolerant of "Level B2" etc. */
-export function clampLevel(raw: string | undefined): CefrLevel {
-  if (!raw) return 'A1';
+/**
+ * Parse free text to a CEFR level, tolerant of "Level B2" etc. Returns null
+ * when the input is absent or unrecognised, so a missing column reads as "no
+ * level" rather than a fabricated A1.
+ */
+export function clampLevel(raw: string | undefined): CefrLevel | null {
+  if (!raw) return null;
   const up = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
   for (const lv of CEFR_LEVELS) {
     if (up === lv) return lv;
   }
   const m = up.match(/[ABC][12]/);
   if (m && (CEFR_LEVELS as readonly string[]).includes(m[0])) return m[0] as CefrLevel;
-  return 'A1';
+  return null;
 }
 
 const TYPE_ALIASES: Record<string, WordType> = {
@@ -361,11 +365,15 @@ const TYPE_ALIASES: Record<string, WordType> = {
   conjuncion: 'conjunction',
 };
 
-/** Map free-text part-of-speech to a WordType (default noun). */
-function mapType(raw: string | undefined): WordType {
-  if (!raw) return 'noun';
+/**
+ * Map free-text part-of-speech to a WordType. Returns null when the input is
+ * absent or unrecognised, so a missing column reads as "no type" rather than a
+ * fabricated noun.
+ */
+function mapType(raw: string | undefined): WordType | null {
+  if (!raw) return null;
   const token = foldAscii(raw.toLowerCase()).replace(/[^a-z]/g, '');
-  if (!token) return 'noun';
+  if (!token) return null;
   const exact = TYPE_ALIASES[token];
   if (exact) return exact;
   if (token.length >= 3) {
@@ -373,7 +381,7 @@ function mapType(raw: string | undefined): WordType {
       if (token.startsWith(wt) || wt.startsWith(token)) return wt;
     }
   }
-  return 'noun';
+  return null;
 }
 
 /** Split tag text on | ; or , — folding any spillover columns back in first. */

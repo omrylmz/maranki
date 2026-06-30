@@ -46,6 +46,7 @@ import {
   SrsSettings,
 } from '@/domain/types';
 import { buildSeedState } from '@/domain/seed';
+import { catalogAddPlan, CURATED_DECKS, materializeCatalogDeck } from '@/domain/deckCatalog';
 
 const STORAGE_KEY = 'maranki.state.v1';
 const SAVE_DEBOUNCE_MS = 400;
@@ -117,6 +118,8 @@ interface DataActions {
     deck: Pick<Deck, 'name' | 'flag' | 'lang'> & Partial<Deck>,
     cards: (Pick<Card, 'word' | 'tr'> & Partial<Card>)[],
   ) => Deck;
+  /** Add (or reactivate) a curated, filter-ready built-in deck by its stable id. */
+  addCatalogDeck: (catalogId: string) => void;
 
   setGoals: (goalReviews: number, goalNew: number) => void;
   updateSrsSettings: (patch: Partial<SrsSettings>) => void;
@@ -406,8 +409,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ipa: fields.ipa,
       ex: fields.ex,
       exTr: fields.exTr,
-      level: fields.level ?? 'A1',
-      type: fields.type ?? 'noun',
+      level: fields.level ?? null,
+      type: fields.type ?? null,
       lang: fields.lang ?? 'de',
       tags: fields.tags,
       fav: fields.fav ?? false,
@@ -515,8 +518,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ipa: f.ipa,
       ex: f.ex,
       exTr: f.exTr,
-      level: f.level ?? 'A1',
-      type: f.type ?? 'noun',
+      level: f.level ?? null,
+      type: f.type ?? null,
       lang: f.lang ?? 'de',
       tags: f.tags,
       fav: false,
@@ -535,6 +538,34 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }));
     setState((s) => ({ ...s, decks: [...s.decks, deck], cards: [...s.cards, ...cards] }));
     return deck;
+  }, []);
+
+  // Curated add: idempotent and robust to a prior delete. Unlike addDeck/
+  // importDeck (which force builtin:false), this keeps the catalog's STABLE id
+  // and builtin:true, so re-adding a deleted curated deck rejoins under the same
+  // identity — only its CARD ids are minted fresh. The plan is read from the
+  // committed mirror; the work (id-minting) happens OUTSIDE the updater and the
+  // updater stays a pure spread (mirrors importDeck), with a defensive dedupe.
+  const addCatalogDeck = useCallback<DataActions['addCatalogDeck']>((catalogId) => {
+    const entry = CURATED_DECKS.find((e) => e.id === catalogId);
+    if (!entry) return;
+    const plan = catalogAddPlan(stateRef.current.decks, catalogId);
+    if (plan === 'noop') return;
+    if (plan === 'activate') {
+      setState((s) => ({
+        ...s,
+        decks: s.decks.map((d) => (d.id === catalogId ? { ...d, active: true } : d)),
+      }));
+      return;
+    }
+    // plan === 'create' — one transform owns the deck+card shape (incl. the
+    // Deck.lang display-name vs Card.lang code split); see materializeCatalogDeck.
+    const { deck, cards } = materializeCatalogDeck(entry, Date.now());
+    setState((s) =>
+      s.decks.some((d) => d.id === entry.id)
+        ? s
+        : { ...s, decks: [...s.decks, deck], cards: [...s.cards, ...cards] },
+    );
   }, []);
 
   /* ---------------------------------------------------------- settings */
@@ -583,6 +614,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       updateDeck,
       deleteDeck,
       importDeck,
+      addCatalogDeck,
       setGoals,
       updateSrsSettings,
       updateAppSettings,
@@ -604,6 +636,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       updateDeck,
       deleteDeck,
       importDeck,
+      addCatalogDeck,
       setGoals,
       updateSrsSettings,
       updateAppSettings,

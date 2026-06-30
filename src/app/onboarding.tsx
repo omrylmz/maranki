@@ -10,21 +10,20 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Btn, CardBox, FlagSq, Ion, RiseIn, Row, Stepper } from '@/components/ui';
+import { CURATED_LANGUAGES } from '@/domain/deckCatalog';
 import { useData } from '@/store/DataContext';
 import { font } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
 
-const LANG_OPTIONS = [
-  { flag: '🇩🇪', name: 'German' },
-  { flag: '🇪🇸', name: 'Spanish' },
-  { flag: '🇫🇷', name: 'French' },
-];
+/** Languages offered at onboarding come straight from the curated catalog, so
+ *  shipping a new language surfaces it here automatically. */
+const LANG_OPTIONS = CURATED_LANGUAGES.map((g) => ({ flag: g.flag, name: g.deckLang }));
 
 export default function OnboardingScreen() {
   const c = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { state, actions } = useData();
+  const { actions } = useData();
 
   const [step, setStep] = useState(0);
   const [lang, setLang] = useState<string | null>(null);
@@ -33,26 +32,26 @@ export default function OnboardingScreen() {
 
   const mins = Math.max(2, Math.round(((neww + reviews) * 10) / 60));
 
-  /* honest per-language inventory from the real decks */
+  /* honest per-language inventory straight from the curated catalog — decks
+     aren't seeded, they're materialized when the learner picks a language */
   const langMeta = useMemo(() => {
     const meta: Record<string, string> = {};
-    LANG_OPTIONS.forEach(({ name }) => {
-      const decks = state.decks.filter((d) => d.lang === name);
-      const deckIds = new Set(decks.map((d) => d.id));
-      const count = state.cards.filter((x) => deckIds.has(x.deckId)).length;
-      const levels = [...new Set(decks.map((d) => d.level).filter(Boolean))].join('–');
-      meta[name] = `${count} cards${levels ? ` · ${levels}` : ''}`;
+    CURATED_LANGUAGES.forEach((g) => {
+      const count = g.decks.reduce((n, d) => n + d.specs.length, 0);
+      const levels = [...new Set(g.decks.map((d) => d.level).filter(Boolean))].join('–');
+      meta[g.deckLang] = `${count} cards${levels ? ` · ${levels}` : ''}`;
     });
     return meta;
-  }, [state.decks, state.cards]);
+  }, []);
 
   const applyChoices = () => {
     actions.setGoals(reviews, neww);
     actions.updateSrsSettings({ dailyNewLimit: neww, dailyReviewLimit: Math.max(reviews, 30) });
     if (lang) {
-      state.decks.forEach((d) => {
-        if (d.lang === lang && !d.active) actions.updateDeck(d.id, { active: true });
-      });
+      // Materialize the chosen language's curated decks (idempotent add) — the
+      // one place a fresh install gains decks without an explicit "Add".
+      const group = CURATED_LANGUAGES.find((g) => g.deckLang === lang);
+      group?.decks.forEach((d) => actions.addCatalogDeck(d.id));
     }
     actions.markOnboarded();
   };
@@ -71,7 +70,11 @@ export default function OnboardingScreen() {
   };
 
   const skip = () => {
-    actions.markOnboarded();
+    // Honor a language already chosen — skipping setup shouldn't silently
+    // discard the pick and strand the learner on an empty app. applyChoices()
+    // also marks onboarded; with no pick, we just mark and leave.
+    if (lang) applyChoices();
+    else actions.markOnboarded();
     router.back();
   };
 

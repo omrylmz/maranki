@@ -9,8 +9,11 @@ export {
   StateBadge,
   Chip,
   Pill,
+  TypePill,
   StreakChip,
   FlagSq,
+  DeckTag,
+  DeckTile,
 } from './badges';
 export {
   Overline,

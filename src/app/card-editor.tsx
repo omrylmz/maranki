@@ -13,6 +13,7 @@ import {
   Chip,
   IconBtn,
   Field,
+  Ion,
   ListRow,
   Overline,
   Sheet,
@@ -87,8 +88,8 @@ export default function CardEditorScreen() {
       ex: ex.trim() || undefined,
       exTr: exTr.trim() || undefined,
       ipa: ipa.trim() || undefined,
-      level: level ?? 'A1',
-      type: type ?? 'noun',
+      level,
+      type,
       deckId: deck,
       lang: langCode(deckObj?.lang ?? 'German'),
     };
@@ -101,6 +102,48 @@ export default function CardEditorScreen() {
     }
     router.back();
   };
+
+  // A card needs an active deck to live in. On a blank slate there are none yet, so the
+  // form would strand the user with a permanently-disabled Save — show a way
+  // forward instead.
+  if (!editing && activeDecks.length === 0) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.paper }}>
+        <StackBar title="New card" backIcon="close" onBack={() => router.back()} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+          <Ion name="albums-outline" size={40} color={c.ink3} />
+          <Text
+            style={[
+              font('serif', 600),
+              { fontSize: 20, color: c.ink, marginTop: 14, textAlign: 'center' },
+            ]}
+          >
+            No active deck yet
+          </Text>
+          <Text
+            style={[
+              font('sans', 400),
+              {
+                fontSize: 13.5,
+                color: c.ink3,
+                marginTop: 6,
+                marginBottom: 18,
+                textAlign: 'center',
+                lineHeight: 20,
+              },
+            ]}
+          >
+            A card needs an active deck. Create one, add a curated deck from the Library, or resume a
+            paused deck under Study.
+          </Text>
+          <Btn icon="add" onPress={() => router.replace('/deck-editor')}>
+            New deck
+          </Btn>
+        </View>
+        <SnackbarHost />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: c.paper }}>

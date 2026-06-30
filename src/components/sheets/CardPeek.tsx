@@ -13,6 +13,7 @@ import {
   Ion,
   LevelBadge,
   Pill,
+  TypePill,
   Sheet,
   StateBadge,
 } from '@/components/ui';
@@ -119,8 +120,8 @@ export function CardPeek({ card, onClose }: CardPeekProps) {
         }}
       >
         <StateBadge state={state} label={state} />
-        <LevelBadge level={card.level} />
-        <Pill>{card.type}</Pill>
+        {card.level != null && <LevelBadge level={card.level} />}
+        {card.type != null && <TypePill type={card.type} />}
         {card.intervalDays > 0 && card.stepIndex === null ? (
           <Pill mono>next in {formatIntervalDays(card.intervalDays)}</Pill>
         ) : null}
