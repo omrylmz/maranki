@@ -7,7 +7,7 @@
  * idx+3, quiet streak milestones, exit-with-progress confirms and records
  * a partial session.
  */
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,6 +44,8 @@ interface Snapshot {
   run: number;
   /** Whether this rating wrote to the SRS schedule (cram doesn't). */
   wrote: boolean;
+  /** fastAnswers tally BEFORE this rating, so undo can revert it (L9). */
+  fastAnswers: number;
 }
 
 const FAST_ANSWER_MS = 3000;
@@ -149,12 +151,20 @@ export default function SessionScreen() {
   const [confirmExit, setConfirmExit] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
+  const navigation = useNavigation();
   const startedAt = useRef(0);
   const revealedAt = useRef(0);
   const fastAnswers = useRef(0);
+  const ratingLock = useRef(false); // re-entrancy guard against double-taps
+  const committedRef = useRef(false); // true once this session has been finalized
   useEffect(() => {
     startedAt.current = Date.now();
   }, []);
+
+  // Release the re-entrancy lock whenever a new card is presented.
+  useEffect(() => {
+    ratingLock.current = false;
+  }, [idx]);
 
   const card = queue[idx];
   const total = queue.length;
@@ -178,10 +188,35 @@ export default function SessionScreen() {
     return () => clearTimeout(t);
   }, [milestone]);
 
+  // Finalize a partial session on ANY exit the explicit close doesn't cover —
+  // Android hardware-back, the iOS edge-swipe. Per-rating schedule writes are
+  // already committed; this saves the XP/streak/record for what was reviewed so
+  // leaving mid-session doesn't silently drop them. committedRef stops a double
+  // commit when finish()/exitNow() already finalized (M5).
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', () => {
+      if (committedRef.current || reviewed === 0) return;
+      committedRef.current = true;
+      actions.completeSession({
+        kind,
+        label,
+        counts,
+        total: reviewed,
+        bestRun,
+        durationSec: Math.round((Date.now() - startedAt.current) / 1000),
+        fastAnswers: fastAnswers.current,
+      });
+      actions.clearLastCompletion();
+    });
+    return unsub;
+  }, [navigation, reviewed, counts, bestRun, kind, label, actions]);
+
   const reveal = () => {
     if (revealed) return;
     setRevealed(true);
     revealedAt.current = Date.now();
+    // Speak the word automatically when the answer is revealed, if enabled (L8).
+    if (card && state.settings.autoPlayAudio) speakWord(card.word, card.lang);
   };
 
   const finish = (
@@ -190,6 +225,7 @@ export default function SessionScreen() {
     finalBest: number,
     finalCard?: Card,
   ) => {
+    committedRef.current = true; // this session is finalized — block the partial-commit on removal
     actions.completeSession({
       kind,
       label,
@@ -205,7 +241,16 @@ export default function SessionScreen() {
 
   const rate = (r: Rating) => {
     if (!card || !pred) return;
-    const snapshot: Snapshot = { queue, idx, counts, run, wrote: writesSchedule };
+    if (ratingLock.current) return; // ignore a second tap before the next card mounts
+    ratingLock.current = true;
+    const snapshot: Snapshot = {
+      queue,
+      idx,
+      counts,
+      run,
+      wrote: writesSchedule,
+      fastAnswers: fastAnswers.current,
+    };
     if (Date.now() - revealedAt.current < FAST_ANSWER_MS) fastAnswers.current += 1;
 
     actions.rateCard(card.id, r, { writeSchedule: writesSchedule });
@@ -213,10 +258,13 @@ export default function SessionScreen() {
     const nextCounts = { ...counts, [r]: counts[r] + 1 };
     let nextQueue = queue;
     if (r === 'again') {
-      // requeue this card a few positions later, same session
+      // requeue this card a few positions later, same session — re-entering with
+      // the POST-Again state so its predicted intervals reflect the lapse, not
+      // the pre-rating card (M10).
       nextQueue = [...queue];
       const reinsert = Math.min(idx + 3, nextQueue.length);
-      nextQueue.splice(reinsert, 0, { ...card, requeued: true });
+      const reentered = applyRating(card, 'again', state.settings.srs, Date.now());
+      nextQueue.splice(reinsert, 0, { ...reentered, requeued: true });
     }
     const nextRun = r === 'again' ? 0 : run + 1;
     const nextBest = Math.max(bestRun, nextRun);
@@ -257,11 +305,13 @@ export default function SessionScreen() {
     setIdx(prev.idx);
     setCounts(prev.counts);
     setRun(prev.run);
+    fastAnswers.current = prev.fastAnswers; // revert the fast-answer tally too (L9)
     setRevealed(true);
     setSnack({ text: 'Rating undone — card restored', undo: false });
   };
 
   const exitNow = () => {
+    committedRef.current = true; // finalized here — block the beforeRemove partial commit
     if (reviewed > 0) {
       // partial sessions still count (the exit copy promises it)
       actions.completeSession({

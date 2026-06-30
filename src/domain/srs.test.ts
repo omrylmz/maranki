@@ -136,3 +136,19 @@ describe('predictAll / stepLabel', () => {
     expect(stepLabel(mk({ reps: 3, stepIndex: null }), DEFAULT_SRS)).toBeNull();
   });
 });
+
+describe('M10: a requeued "Again" card must predict from its POST-lapse state', () => {
+  test('after a lapse the card is in relearning and its predictions change', () => {
+    // session.tsx re-enters an "Again" card with applyRating(card,'again',…) so
+    // its on-screen predictions reflect the lapse. This pins WHY: the post-lapse
+    // card predicts differently from the pre-rating one.
+    const review = mk({ reps: 8, stepIndex: null, intervalDays: 30, ease: 2.5, due: NOW - DAY });
+    const before = predictAll(review, DEFAULT_SRS);
+    const relapsed = applyRating(review, 'again', DEFAULT_SRS, NOW);
+    const after = predictAll(relapsed, DEFAULT_SRS);
+    expect(review.stepIndex).toBeNull(); // pre: a graduated review card
+    expect(relapsed.stepIndex).toBe(0); // post: back in relearning
+    expect(relapsed.lapses).toBe(review.lapses + 1);
+    expect(after.good).not.toBe(before.good); // so its "Good" prediction differs
+  });
+});
