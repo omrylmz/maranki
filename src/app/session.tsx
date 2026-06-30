@@ -27,7 +27,7 @@ import {
 } from '@/components/ui';
 import { buildQueue } from '@/domain/queue';
 import { speakWord } from '@/domain/speech';
-import { predictAll, stepLabel } from '@/domain/srs';
+import { applyRating, predictAll, stepLabel } from '@/domain/srs';
 import { Card, Rating, SessionKind } from '@/domain/types';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { font, tnum } from '@/theme/tokens';
@@ -184,7 +184,12 @@ export default function SessionScreen() {
     revealedAt.current = Date.now();
   };
 
-  const finish = (finalCounts: Record<Rating, number>, finalTotal: number, finalBest: number) => {
+  const finish = (
+    finalCounts: Record<Rating, number>,
+    finalTotal: number,
+    finalBest: number,
+    finalCard?: Card,
+  ) => {
     actions.completeSession({
       kind,
       label,
@@ -193,6 +198,7 @@ export default function SessionScreen() {
       bestRun: finalBest,
       durationSec: Math.round((Date.now() - startedAt.current) / 1000),
       fastAnswers: fastAnswers.current,
+      finalCard,
     });
     router.replace('/complete');
   };
@@ -230,7 +236,12 @@ export default function SessionScreen() {
     setRevealed(false);
 
     if (idx + 1 >= nextQueue.length) {
-      finish(nextCounts, idx + 1, nextBest);
+      // Pass the freshly-rated card so end-of-session mastery/language
+      // achievements score against true final state (cram doesn't reschedule).
+      const finalCard = writesSchedule
+        ? applyRating(card, r, state.settings.srs, Date.now())
+        : undefined;
+      finish(nextCounts, idx + 1, nextBest, finalCard);
     } else {
       setQueue(nextQueue);
       setIdx(idx + 1);
