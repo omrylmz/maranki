@@ -223,5 +223,6 @@ export function buildSeedState(now: number): DataState {
     reviewLog: [],
     settings,
     onboarded: false,
+    inProgressSession: null,
   };
 }

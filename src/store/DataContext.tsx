@@ -38,6 +38,7 @@ import {
   dayKeyOf,
   DayDone,
   Deck,
+  InProgressSession,
   MASTERED_INTERVAL_DAYS,
   Person,
   Rating,
@@ -109,6 +110,9 @@ interface DataActions {
   undoLastReview: () => boolean;
   completeSession: (args: CompleteSessionArgs) => CompletionPayout;
   clearLastCompletion: () => void;
+  /** Persist a snapshot of the in-flight session so an app-kill mid-session can
+   *  be reconciled on next boot (M5). Cleared by completeSession on clean exit. */
+  trackSession: (snapshot: InProgressSession) => void;
 
   setCardProps: (cardIds: string[], patch: Partial<Card>) => void;
   buryCard: (cardId: string) => void;
@@ -429,12 +433,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         achievements: { ...s.person.achievements, ...newAchievements },
       },
       sessions: [...s.sessions, session],
+      // Clear the in-flight marker in the SAME commit that banks the payout, so
+      // persistence is atomic: the boot reconciler can never double-count (M5).
+      inProgressSession: null,
     }));
     setLastCompletion(payout);
     return payout;
   }, []);
 
   const clearLastCompletion = useCallback(() => setLastCompletion(null), []);
+
+  // Snapshot the in-flight session (updated per rating) so a process-kill that
+  // skips completeSession doesn't lose its payout — reconciled on next boot (M5).
+  const trackSession = useCallback<DataActions['trackSession']>((snapshot) => {
+    setState((s) => ({ ...s, inProgressSession: snapshot }));
+  }, []);
+
+  // One-shot on first ready: bank a session that was in flight when the app was
+  // last killed. completeSession reads the now-loaded state, banks the XP/streak/
+  // record those per-rating schedule writes never got, and clears the marker in
+  // the same commit (atomic — no double-count). clearLastCompletion keeps it
+  // silent: no payout screen for a session the user didn't just finish (M5).
+  const reconciledRef = useRef(false);
+  useEffect(() => {
+    if (!ready || reconciledRef.current) return;
+    reconciledRef.current = true;
+    const marker = stateRef.current.inProgressSession;
+    if (marker) {
+      completeSession(marker);
+      clearLastCompletion();
+    }
+  }, [ready, completeSession, clearLastCompletion]);
 
   /* ------------------------------------------------------- card actions */
 
@@ -649,6 +678,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       undoLastReview,
       completeSession,
       clearLastCompletion,
+      trackSession,
       setCardProps,
       buryCard,
       addCard,
@@ -671,6 +701,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       undoLastReview,
       completeSession,
       clearLastCompletion,
+      trackSession,
       setCardProps,
       buryCard,
       addCard,
