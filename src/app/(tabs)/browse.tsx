@@ -68,11 +68,14 @@ export default function BrowseScreen() {
   const [fStatus, setFStatus] = useState<StatusFilter[]>([]);
   const [fDecks, setFDecks] = useState<string[]>([]);
 
-  // arriving from a peek sheet's "Browse cards" — the route param must sync
-  // into filter state whenever it changes (the tab stays mounted).
+  // Arriving from a peek sheet's "Browse cards" — the route param scopes Browse
+  // to that deck. Sync UNCONDITIONALLY so navigating to the full library or a
+  // collection (no deckId) clears the scope instead of leaking the old deck
+  // filter into those views (M8). Manual filter edits don't change the param, so
+  // they survive — the effect only fires on navigation.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate one-render cascade on navigation; deriving instead would break "Clear filters".
-    if (params.deckId) setFDecks([params.deckId]);
+    setFDecks(params.deckId ? [params.deckId] : []);
   }, [params.deckId]);
 
   const now = useNow();

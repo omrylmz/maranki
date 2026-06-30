@@ -29,6 +29,8 @@ interface ThemeValue {
   setOverride: (scheme: ResolvedScheme | null) => void;
   resolved: ResolvedScheme;
   colors: Palette;
+  /** True once the persisted theme preference has been read (or failed to). */
+  hydrated: boolean;
 }
 
 const STORAGE_KEY = 'maranki.themeMode';
@@ -39,6 +41,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>('light');
   const [override, setOverride] = useState<ResolvedScheme | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
@@ -50,7 +53,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {
         // A failed preference read just keeps the default — never an unhandled
         // rejection.
-      });
+      })
+      // Mark hydrated either way, so the splash can wait for the real theme and
+      // not flash the default light palette before a dark preference loads (L21).
+      .finally(() => setHydrated(true));
   }, []);
 
   const setMode = useCallback((next: ThemeMode) => {
@@ -70,8 +76,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setOverride,
       resolved,
       colors: resolved === 'dark' ? dark : light,
+      hydrated,
     }),
-    [mode, setMode, override, resolved],
+    [mode, setMode, override, resolved, hydrated],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

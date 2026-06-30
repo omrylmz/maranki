@@ -41,11 +41,9 @@ export function AddDeckSheet({ open, onClose, scope }: AddDeckSheetProps) {
   // Which language the user has drilled into (null = the language list).
   const [langName, setLangName] = useState<string | null>(null);
 
-  // Always dismiss back to the language list, so reopening starts at level 0.
-  const handleClose = () => {
-    setLangName(null);
-    onClose();
-  };
+  // Reset the drill-down only AFTER the sheet has slid away (Sheet.onClosed), so
+  // the dismiss animation doesn't flash the language list before closing (L22).
+  const handleClose = () => onClose();
 
   const go = (fn: () => void) => () => {
     handleClose();
@@ -60,7 +58,12 @@ export function AddDeckSheet({ open, onClose, scope }: AddDeckSheetProps) {
   const showAllSet = scope === 'curated' && allCuratedAdded;
 
   return (
-    <Sheet open={open} onClose={handleClose} title={group ? `${group.flag}  ${group.deckLang}` : 'Add a deck'}>
+    <Sheet
+      open={open}
+      onClose={handleClose}
+      onClosed={() => setLangName(null)}
+      title={group ? `${group.flag}  ${group.deckLang}` : 'Add a deck'}
+    >
       {group ? (
         /* ---------- level 1: a language's decks ---------- */
         <View>

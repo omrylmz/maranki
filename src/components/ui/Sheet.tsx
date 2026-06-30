@@ -26,9 +26,12 @@ interface SheetProps {
   title?: string;
   /** Max height as a fraction of the window (mock: 78%). */
   maxHFrac?: number;
+  /** Fires AFTER the dismiss animation finishes — for resetting inner state
+   *  (e.g. a drill-down level) without flashing it mid-slide-out. */
+  onClosed?: () => void;
 }
 
-export function Sheet({ open, onClose, children, title, maxHFrac = 0.78 }: SheetProps) {
+export function Sheet({ open, onClose, children, title, maxHFrac = 0.78, onClosed }: SheetProps) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const { height: winH } = useWindowDimensions();
@@ -53,10 +56,13 @@ export function Sheet({ open, onClose, children, title, maxHFrac = 0.78 }: Sheet
         easing: Easing.in(Easing.quad),
         useNativeDriver: true,
       }).start(({ finished }) => {
-        if (finished) setVisible(false);
+        if (finished) {
+          setVisible(false);
+          onClosed?.();
+        }
       });
     }
-  }, [open, visible, slide]);
+  }, [open, visible, slide, onClosed]);
 
   if (!visible) return null;
 
