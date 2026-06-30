@@ -29,6 +29,12 @@ export interface ParsedImport {
   payload: ImportCardPayload[];
   /** Deck name derived from the file name (extension stripped). */
   name: string;
+  /**
+   * Field/header labels when the source exposes them (CSV header row, Anki model
+   * field names). Fed to inferLang so a foreign header (Palabra/Traducción) sets
+   * the language even when the deck name carries no hint (H6). Absent ⇒ no header.
+   */
+  fieldNames?: string[];
 }
 
 const CEFR_LEVELS: readonly CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -131,6 +137,14 @@ function looksBinary(s: string): boolean {
 const DELIMITERS = [',', ';', '\t'] as const;
 type Delimiter = (typeof DELIMITERS)[number];
 
+/**
+ * Tie-break preference when two delimiters split the sample equally well. A
+ * comma occurs freely *inside* field content (synonym lists — "to go, to walk",
+ * decimal/thousand groups), whereas a tab or semicolon almost never does, so
+ * the rarer-in-content delimiter is the likelier structural one. Higher wins.
+ */
+const DELIM_PRIORITY: Record<Delimiter, number> = { '\t': 3, ';': 2, ',': 1 };
+
 /** Up to `n` leading non-blank lines, rejoined — the delimiter-sniffing sample. */
 function sampleLines(text: string, n: number): string {
   const out: string[] = [];
@@ -160,18 +174,25 @@ function modeOf(nums: number[]): number {
 
 /**
  * Pick the delimiter by running the REAL tokeniser (splitCsvRows) over the first
- * several content lines and scoring each candidate by how many columns it makes
- * AND how uniformly — a real table is wide and consistent. Sniffing one line
- * misreads a single-column header or a comma hiding inside one quoted cell;
- * sampling many lines and sharing splitCsvRows means the sniffer and the parser
- * can never disagree about quoting. A file no candidate splits (single column)
- * falls back to comma.
+ * several content lines and ranking each candidate by how UNIFORMLY it splits —
+ * a real table has a consistent column count. Sniffing one line misreads a
+ * single-column header or a comma hiding inside one quoted cell; sampling many
+ * lines and sharing splitCsvRows means the sniffer and the parser can never
+ * disagree about quoting.
+ *
+ * Column COUNT is deliberately NOT a reward: a TSV/semicolon table whose value
+ * column holds a comma-separated synonym list ("gehen\tto go, to walk") makes a
+ * comma split into MORE — but equally consistent — columns than the real tab. So
+ * we rank on consistency and break ties toward the delimiter that is rarest
+ * inside field content (tab > semicolon > comma; H5). A file no candidate splits
+ * (single column) falls back to comma.
  */
 export function detectDelimiter(text: string): Delimiter {
   const sample = sampleLines(text, 10);
   if (sample === '') return ',';
   let best: Delimiter = ',';
-  let bestScore = -1;
+  let bestConsistency = -1;
+  let bestPriority = -1;
   for (const d of DELIMITERS) {
     const rows = splitCsvRows(sample, d).filter((r) => r.some((cell) => cell.trim() !== ''));
     if (rows.length === 0) continue;
@@ -179,9 +200,12 @@ export function detectDelimiter(text: string): Delimiter {
     if (Math.max(...widths) < 2) continue; // this delimiter splits nothing → not it
     const modal = modeOf(widths);
     const consistency = widths.filter((w) => w === modal).length / widths.length;
-    const score = modal + consistency; // favour more columns AND uniform width
-    if (score > bestScore) {
-      bestScore = score;
+    const priority = DELIM_PRIORITY[d];
+    // Most consistent table wins; equal consistency → the rarer-in-content
+    // delimiter, so a comma inside one field can't out-vote a real tab/semicolon.
+    if (consistency > bestConsistency || (consistency === bestConsistency && priority > bestPriority)) {
+      bestConsistency = consistency;
+      bestPriority = priority;
       best = d;
     }
   }
@@ -298,6 +322,15 @@ const HEADER_FIRST_CELLS = new Set<string>([
   'headword',
   'lemma',
   'wort',
+  // Foreign word-column labels (folded): es/fr/it/de. Recognising these lets a
+  // foreign header be both skipped and used as a language hint (H6/L20).
+  'palabra',
+  'mot',
+  'parola',
+  'begriff',
+  'terme',
+  'termino',
+  'vorderseite',
 ]);
 
 /** Header labels expected in a SECOND column — the corroborating signal. */
@@ -328,6 +361,21 @@ const HEADER_OTHER_CELLS = new Set<string>([
   'bedeutung',
   'beispiel',
   'wort',
+  // Foreign translation/example/answer labels (folded): es/fr/it.
+  'traduccion',
+  'traduction',
+  'traduzione',
+  'significado',
+  'significato',
+  'signification',
+  'ejemplo',
+  'exemple',
+  'esempio',
+  'respuesta',
+  'reponse',
+  'antwort',
+  'oracion',
+  'ruckseite',
 ]);
 
 /**
@@ -472,6 +520,9 @@ export function parseImportCsv(text: string, fileName: string): ParsedImport {
 
   // Skip the first row only if it reads like a header.
   const start = isHeaderRow(rows[0]) ? 1 : 0;
+  // A real header row doubles as a language hint (Palabra/Traducción → Spanish).
+  const fieldNames =
+    start === 1 ? rows[0].map((cell) => cell.trim()).filter((cell) => cell !== '') : undefined;
 
   const payload: ImportCardPayload[] = [];
   for (let r = start; r < rows.length; r++) {
@@ -500,5 +551,5 @@ export function parseImportCsv(text: string, fileName: string): ParsedImport {
     payload.push(card);
   }
 
-  return { payload, name };
+  return { payload, name, fieldNames };
 }

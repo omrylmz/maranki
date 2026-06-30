@@ -34,7 +34,7 @@ import {
   searchSharedDecks,
 } from '@/domain/ankiweb';
 import { ApkgError, apkgErrorMessage, parseApkg } from '@/domain/importApkg';
-import { detectImportKind, parseImportCsv } from '@/domain/importFile';
+import { detectImportKind, ParsedImport, parseImportCsv } from '@/domain/importFile';
 import { ImportCardPayload } from '@/domain/importSamples';
 import { Deck } from '@/domain/types';
 import { inferLang, LANG_FLAGS } from '@/domain/words';
@@ -167,14 +167,15 @@ export default function ImportScreen() {
       const file = picked.result; // narrowed to File by the `canceled` discriminant
 
       // Hand a parsed deck to the existing staged flow.
-      const finish = (payload: ImportCardPayload[], name: string) => {
+      const finish = ({ payload, name, fieldNames }: ParsedImport) => {
         if (payload.length === 0) {
           show('No cards found in that file.');
           return;
         }
-        // Infer the language from the deck/file name so TTS matches the words,
-        // instead of forcing German on every import (H6).
-        const lang = inferLang([name]);
+        // Infer the language from the deck/file name AND any column headers /
+        // Anki field names, so TTS matches the words instead of forcing German
+        // on every import (H6).
+        const lang = inferLang([name, ...(fieldNames ?? [])]);
         stageItem({ source: 'file', name, flag: LANG_FLAGS[lang] ?? '📄', lang, payload });
       };
 
@@ -195,7 +196,7 @@ export default function ImportScreen() {
         // specific message (newer-format / empty / corrupt).
         try {
           const parsed = await parseApkg(bytes, file.name);
-          finish(parsed.payload, parsed.name);
+          finish(parsed);
         } catch (err) {
           show(apkgErrorMessage(err));
         }
@@ -213,9 +214,7 @@ export default function ImportScreen() {
         show('Could not recognise that file — export a .csv or .apkg.');
         return;
       }
-      // parseImportCsv returns { payload, name } (NOT an array) — destructure it.
-      const { payload, name } = parseImportCsv(text, file.name);
-      finish(payload, name);
+      finish(parseImportCsv(text, file.name));
     } catch {
       show('Could not read that file. Please try a different export.');
     } finally {
@@ -250,7 +249,7 @@ export default function ImportScreen() {
         const parsed = await parseApkg(bytes, chosen.name);
         if (ctrl.signal.aborted || !mountedRef.current) return;
         payload = parsed.payload;
-        const lang = inferLang([parsed.name, chosen.name]);
+        const lang = inferLang([parsed.name, chosen.name, ...(parsed.fieldNames ?? [])]);
         deckFields = { name: parsed.name, flag: LANG_FLAGS[lang] ?? '🇩🇪', lang };
       } else {
         payload = chosen.payload;

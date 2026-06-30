@@ -33,14 +33,16 @@ import React, { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 
 import { DataProvider, useData } from '@/store/DataContext';
-import { SnackbarProvider } from '@/store/SnackbarContext';
+import { persistErrorMessage } from '@/store/persistence';
+import { SnackbarProvider, useSnackbar } from '@/store/SnackbarContext';
 import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function AppStack() {
   const { colors, resolved, hydrated } = useTheme();
-  const { ready, state } = useData();
+  const { ready, state, persistError } = useData();
+  const { show } = useSnackbar();
   const router = useRouter();
   const tourShown = useRef(false);
 
@@ -49,6 +51,14 @@ function AppStack() {
     // shown is the real palette — no light-flash before a dark preference (L21).
     if (ready && hydrated) SplashScreen.hideAsync().catch(() => {});
   }, [ready, hydrated]);
+
+  // Surface a persistence failure instead of swallowing it (M15): a failed load
+  // ('read', set on boot) or save ('write', set on a mutation) was captured but
+  // never shown. The snackbar host on the tab screens / editors renders it.
+  useEffect(() => {
+    const msg = persistErrorMessage(persistError);
+    if (msg) show(msg);
+  }, [persistError, show]);
 
   // language-first onboarding on first boot (F1) — and again after a factory
   // reset, which flips onboarded back to false. tourShown dedupes a single

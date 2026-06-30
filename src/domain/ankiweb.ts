@@ -307,8 +307,13 @@ async function fetchBytes(
   }
   try {
     // RN fetch exposes binary via arrayBuffer(); there is no CORS to worry about.
+    // NOTE: React Native's fetch does not expose a readable `res.body` stream, so
+    // we cannot abort mid-download incrementally — arrayBuffer() buffers the whole
+    // body first. The Content-Length pre-check above bounds the honest case; this
+    // post-read check still rejects a body that was absent/understated in the
+    // header. A server that both omits Content-Length AND streams a >cap body
+    // could over-allocate before this guard fires (L18 residual).
     const buf = await res.arrayBuffer();
-    // ...and re-check the actual size, in case Content-Length was absent or lied.
     if (buf.byteLength > MAX_RESPONSE_BYTES) {
       throw new AnkiWebError(httpCode, 'AnkiWeb response is too large to import safely.');
     }

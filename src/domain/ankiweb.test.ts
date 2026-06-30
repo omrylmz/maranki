@@ -4,9 +4,9 @@
  * freeze the app (H4). These tests would TIME OUT (not just fail) if the hang
  * regressed — they prove the parser always returns.
  */
-import { describe, expect, test } from '@jest/globals';
+import { afterEach, describe, expect, test } from '@jest/globals';
 
-import { parseAnkiWebId, parseDecksResponse } from './ankiweb';
+import { parseAnkiWebId, parseDecksResponse, searchSharedDecks } from './ankiweb';
 
 /* --- tiny protobuf encoders (mirror the hand-rolled reader under test) --- */
 function varint(n: number): number[] {
@@ -75,6 +75,36 @@ describe('parseDecksResponse — TERMINATES on a corrupt buffer (H4)', () => {
     const bytes = new Uint8Array([...good, 0xff, 0xff, 0xff]);
     expect(() => parseDecksResponse(bytes)).not.toThrow();
     expect(parseDecksResponse(bytes)[0].id).toBe('123456');
+  });
+});
+
+describe('fetchBytes — refuses an over-large response (L18)', () => {
+  const origFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = origFetch;
+  });
+
+  // Duck-typed Response: arrayBuffer returns just a { byteLength } so the size
+  // guard can fire without allocating tens of MB in the test.
+  const fakeResponse = (contentLength: string | null, byteLength: number): Response =>
+    ({
+      ok: true,
+      status: 200,
+      headers: { get: (h: string) => (h.toLowerCase() === 'content-length' ? contentLength : null) },
+      arrayBuffer: async () => ({ byteLength }) as ArrayBuffer,
+    }) as unknown as Response;
+
+  const TOO_BIG = 200 * 1024 * 1024; // > the 64 MB cap
+
+  test('rejects when the declared Content-Length exceeds the cap', async () => {
+    global.fetch = (async () => fakeResponse(String(TOO_BIG), 8)) as typeof fetch;
+    await expect(searchSharedDecks('german')).rejects.toThrow(/too large/i);
+  });
+
+  test('rejects an over-large body even when Content-Length is absent or lies', async () => {
+    // Header says small (or nothing) but the body is huge — the post-read guard.
+    global.fetch = (async () => fakeResponse(null, TOO_BIG)) as typeof fetch;
+    await expect(searchSharedDecks('german')).rejects.toThrow(/too large/i);
   });
 });
 

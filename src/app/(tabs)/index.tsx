@@ -121,7 +121,8 @@ export default function HomeScreen() {
 
   const dateNow = new Date(now);
   const isBrandNew = state.sessions.length === 0;
-  const goalMet = dayDone.reviews >= state.person.goalReviews;
+  // A 0 goal must not read as "complete" with zero work done (L1) — mirror goalPct.
+  const goalMet = state.person.goalReviews > 0 && dayDone.reviews >= state.person.goalReviews;
   const studiedToday =
     state.person.lastStudyDay === dayKeyOf(now) && dayDone.reviews + dayDone.neww > 0;
 

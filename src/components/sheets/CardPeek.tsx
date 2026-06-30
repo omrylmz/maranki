@@ -4,7 +4,7 @@
  * pronunciation-practice entry (stub per WIRING.md §3 — C4 backend).
  */
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import {
@@ -31,12 +31,19 @@ interface CardPeekProps {
   onClose: () => void;
 }
 
-export function CardPeek({ card, onClose }: CardPeekProps) {
+export function CardPeek({ card: cardProp, onClose }: CardPeekProps) {
   const c = useColors();
   const router = useRouter();
   const { actions } = useData();
   const { show } = useSnackbar();
   const now = useNow();
+
+  // Retain the card through Sheet's slide-out so the peek animates closed
+  // instead of vanishing when the parent nulls it (L22). `open` follows the live
+  // prop; the retained `card` is cleared only once the exit animation ends.
+  const [card, setCard] = useState<Card | null>(cardProp);
+  if (cardProp && cardProp !== card) setCard(cardProp);
+  const open = cardProp != null;
 
   if (!card) return null;
   const state = displayState(card, now);
@@ -63,7 +70,7 @@ export function CardPeek({ card, onClose }: CardPeekProps) {
   );
 
   return (
-    <Sheet open onClose={onClose}>
+    <Sheet open={open} onClose={onClose} onClosed={() => setCard(null)}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
         <View style={{ flex: 1 }}>
           <Text

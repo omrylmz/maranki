@@ -4,7 +4,7 @@
  * Replaces the old app's hidden long-presses.
  */
 import { useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { Btn, DeckTag, DeckTile, Ion, SegBar, Sheet } from '@/components/ui';
@@ -37,12 +37,19 @@ function LegendDot({ color, label, n }: { color: string; label: string; n: numbe
   );
 }
 
-export function PeekSheet({ target, onClose }: PeekSheetProps) {
+export function PeekSheet({ target: targetProp, onClose }: PeekSheetProps) {
   const c = useColors();
   const router = useRouter();
   const { state } = useData();
   const { show } = useSnackbar();
   const now = useNow();
+
+  // Retain the target through Sheet's slide-out so the peek animates closed
+  // instead of vanishing when the parent nulls it (L22). `open` follows the live
+  // prop; the retained `target` is cleared only once the exit animation ends.
+  const [target, setTarget] = useState<PeekTarget | null>(targetProp);
+  if (targetProp && targetProp !== target) setTarget(targetProp);
+  const open = targetProp != null;
 
   const info = useMemo(() => {
     if (!target) return null;
@@ -119,7 +126,7 @@ export function PeekSheet({ target, onClose }: PeekSheetProps) {
   };
 
   return (
-    <Sheet open onClose={onClose}>
+    <Sheet open={open} onClose={onClose} onClosed={() => setTarget(null)}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 4 }}>
         {isColl ? (
           <View
