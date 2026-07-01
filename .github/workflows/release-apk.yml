@@ -1,0 +1,174 @@
+name: Release APK
+
+# Cut a release by pushing a version tag:
+#
+#     git tag v2.0.1
+#     git push origin v2.0.1
+#
+# CI then runs the test suite, regenerates the native Android project
+# (Continuous Native Generation — `android/` is not committed), builds a
+# release APK, and publishes it to the repo's Releases page.
+#
+# You can also trigger it manually from the Actions tab (workflow_dispatch).
+# A manual run with no tag just builds and uploads the APK as an artifact;
+# supply a tag to also publish a Release.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v2.0.1). Leave blank to build without publishing a Release."
+        required: false
+        default: ""
+
+# The built-in GITHUB_TOKEN needs write access to create the Release.
+permissions:
+  contents: write
+
+# Never let two release runs race on the same tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build & publish Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate the release on the test suite — no green tests, no APK.
+      - name: Run tests
+        run: npm test -- --ci
+
+      # Resolve the release identity WITHOUT interpolating untrusted context
+      # straight into the shell (values are passed via env, then read).
+      #   versionName -> the tag without its leading "v" (e.g. 2.0.1)
+      #   versionCode -> the workflow run number (strictly increasing, so
+      #                  Android always treats a new build as an upgrade)
+      - name: Derive version info
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            RAW_TAG="$REF_NAME"
+          else
+            RAW_TAG="$INPUT_TAG"
+          fi
+          if [ -z "$RAW_TAG" ]; then
+            RAW_TAG="v0.0.0-dev"
+          fi
+          {
+            echo "tag=$RAW_TAG"
+            echo "name=${RAW_TAG#v}"
+            echo "code=$RUN_NUMBER"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building $RAW_TAG (versionName=${RAW_TAG#v}, versionCode=$RUN_NUMBER)"
+
+      - name: Prebuild Android project
+        run: npx expo prebuild -p android --no-install
+
+      # Optional: decode a release keystore from secrets. If it isn't set up
+      # yet, the build falls back to Expo's debug signing — the APK still
+      # installs by sideload, it just isn't signed with your own key.
+      # Add real signing later with scripts/setup-release-keystore.sh.
+      - name: Decode release keystore (if configured)
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            {
+              echo "signed=true"
+              echo "path=$RUNNER_TEMP/release.keystore"
+            } >> "$GITHUB_OUTPUT"
+            echo "Signing with the release keystore from secrets."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "No ANDROID_KEYSTORE_BASE64 secret — APK will be debug-signed (still sideloadable)."
+          fi
+
+      # Version and signing are injected via Gradle properties rather than by
+      # editing build.gradle, because prebuild regenerates build.gradle on
+      # every run and any edit would be thrown away.
+      - name: Build release APK
+        working-directory: android
+        env:
+          SIGNED: ${{ steps.keystore.outputs.signed }}
+          KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          ARGS=(
+            "assembleRelease"
+            "--no-daemon"
+            "-Pandroid.injected.version.name=$VERSION_NAME"
+            "-Pandroid.injected.version.code=$VERSION_CODE"
+          )
+          if [ "$SIGNED" = "true" ]; then
+            ARGS+=(
+              "-Pandroid.injected.signing.store.file=$KEYSTORE_PATH"
+              "-Pandroid.injected.signing.store.password=$STORE_PASSWORD"
+              "-Pandroid.injected.signing.key.alias=$KEY_ALIAS"
+              "-Pandroid.injected.signing.key.password=$KEY_PASSWORD"
+            )
+          fi
+          ./gradlew "${ARGS[@]}"
+
+      - name: Name the APK
+        id: apk
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          SRC="android/app/build/outputs/apk/release/app-release.apk"
+          DEST="maranki-${TAG}.apk"
+          cp "$SRC" "$DEST"
+          echo "path=$DEST" >> "$GITHUB_OUTPUT"
+          ls -lh "$DEST"
+
+      # Keep a copy even on manual/unpublished runs.
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maranki-apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          APK: ${{ steps.apk.outputs.path }}
+        run: |
+          gh release create "$TAG" "$APK" \
+            --title "Maranki $TAG" \
+            --generate-notes
