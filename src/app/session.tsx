@@ -28,7 +28,7 @@ import {
 import { buildQueue } from '@/domain/queue';
 import { speakWord } from '@/domain/speech';
 import { applyRating, predictAll, stepLabel } from '@/domain/srs';
-import { Card, Rating, SessionKind } from '@/domain/types';
+import { Card, dayKeyOf, Rating, SessionKind } from '@/domain/types';
 import { normalizedDayDone, useData } from '@/store/DataContext';
 import { font, tnum } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
@@ -42,6 +42,10 @@ interface Snapshot {
   idx: number;
   counts: Record<Rating, number>;
   run: number;
+  /** bestRun BEFORE this rating, so undo can revert the run-bonus mirror too —
+   *  otherwise an undone run still pays its XP and misrecords the session (L9's
+   *  sibling: L9 restored fastAnswers but not bestRun). */
+  bestRun: number;
   /** Whether this rating wrote to the SRS schedule (cram doesn't). */
   wrote: boolean;
   /** fastAnswers tally BEFORE this rating, so undo can revert it (L9). */
@@ -172,6 +176,13 @@ export default function SessionScreen() {
   const total = queue.length;
   const reviewed = idx;
 
+  // The day the session's reviews belong to (its start day), threaded into every
+  // completion + the in-flight marker so the streak/freeze roll and SessionRecord
+  // land on the day the user studied — not completeSession's own clock, which is a
+  // different day for a session finishing after local midnight or one banked by
+  // the boot reconciler on a later day (#2/#3).
+  const sessionDay = () => dayKeyOf(startedAt.current || Date.now());
+
   const pred = useMemo(
     () => (card ? predictAll(card, state.settings.srs) : null),
     [card, state.settings.srs],
@@ -207,6 +218,7 @@ export default function SessionScreen() {
         bestRun,
         durationSec: Math.round((Date.now() - startedAt.current) / 1000),
         fastAnswers: fastAnswers.current,
+        studyDay: sessionDay(),
       });
       actions.clearLastCompletion();
     });
@@ -236,6 +248,7 @@ export default function SessionScreen() {
       bestRun: finalBest,
       durationSec: Math.round((Date.now() - startedAt.current) / 1000),
       fastAnswers: fastAnswers.current,
+      studyDay: sessionDay(),
       finalCard,
     });
     router.replace('/complete');
@@ -250,6 +263,7 @@ export default function SessionScreen() {
       idx,
       counts,
       run,
+      bestRun,
       wrote: writesSchedule,
       fastAnswers: fastAnswers.current,
     };
@@ -304,6 +318,7 @@ export default function SessionScreen() {
         bestRun: nextBest,
         durationSec: Math.round((Date.now() - startedAt.current) / 1000),
         fastAnswers: fastAnswers.current,
+        studyDay: sessionDay(),
       });
       setQueue(nextQueue);
       setIdx(idx + 1);
@@ -315,11 +330,40 @@ export default function SessionScreen() {
     const prev = history[history.length - 1];
     if (prev.wrote) actions.undoLastReview();
     setHistory(history.slice(0, -1));
-    setQueue(prev.queue);
+    // Reconcile the restored queue against the store: a bury (or suspend) commits
+    // to the store but pushes no history entry, so a naive restore of prev.queue
+    // would resurrect a buried card into the session while its buriedUntil stays
+    // set everywhere else. Drop such cards, but keep the already-reviewed prefix
+    // (≤ prev.idx) so the index still points at the card being un-rated (#6).
+    const now = Date.now();
+    const blocked = new Set(
+      state.cards
+        .filter((cd) => cd.suspended || (cd.buriedUntil != null && cd.buriedUntil > now))
+        .map((cd) => cd.id),
+    );
+    setQueue(prev.queue.filter((q, i) => i <= prev.idx || !blocked.has(q.id)));
     setIdx(prev.idx);
     setCounts(prev.counts);
     setRun(prev.run);
+    setBestRun(prev.bestRun); // revert the run-bonus mirror too (#7)
     fastAnswers.current = prev.fastAnswers; // revert the fast-answer tally too (L9)
+    // Keep the persisted crash-recovery marker in step with the revert, so the
+    // boot reconciler can't bank undone reviews: clear it when the undo returns
+    // to zero reviews, else mirror the reverted counts/total (#4).
+    if (prev.idx === 0) {
+      actions.trackSession(null);
+    } else {
+      actions.trackSession({
+        kind,
+        label,
+        counts: prev.counts,
+        total: prev.idx,
+        bestRun: prev.bestRun,
+        durationSec: Math.round((Date.now() - startedAt.current) / 1000),
+        fastAnswers: prev.fastAnswers,
+        studyDay: sessionDay(),
+      });
+    }
     setRevealed(true);
     setSnack({ text: 'Rating undone — card restored', undo: false });
   };
@@ -336,6 +380,7 @@ export default function SessionScreen() {
         bestRun,
         durationSec: Math.round((Date.now() - startedAt.current) / 1000),
         fastAnswers: fastAnswers.current,
+        studyDay: sessionDay(),
       });
       actions.clearLastCompletion();
     }

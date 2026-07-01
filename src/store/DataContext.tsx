@@ -52,7 +52,7 @@ import { catalogAddPlan, CURATED_DECKS, materializeCatalogDeck } from '@/domain/
 import { langCode } from '@/domain/words';
 import { DeleteStrategy, resolveDeckDeletion } from './deckOps';
 import { BACKUP_KEY, classifyStored, serialize, STORAGE_KEY } from './persistence';
-import { rollStreak, tallyReview, untallyReview } from './tally';
+import { attributionDay, rollStreak, tallyReview, untallyReview } from './tally';
 
 const SAVE_DEBOUNCE_MS = 400;
 const REVIEW_LOG_CAP = 400;
@@ -97,6 +97,15 @@ export interface CompleteSessionArgs {
   durationSec: number;
   fastAnswers: number;
   /**
+   * The calendar day the session's reviews belong to (its start day). Threaded
+   * from the session screen so the streak roll, SessionRecord and lastStudyDay
+   * are attributed to the day the user studied — not completeSession's own
+   * clock, which is a different day for a session finishing after local midnight
+   * or one banked by the boot reconciler on a later day. Optional at runtime
+   * (a legacy in-flight marker omits it → falls back to the completion instant).
+   */
+  studyDay?: string;
+  /**
    * The session's final rated card (post-rating). The final rateCard commits in
    * the same tick as completeSession, so the committed-state mirror is stale by
    * one rating; passing the fresh card lets mastery/language achievements be
@@ -111,8 +120,9 @@ interface DataActions {
   completeSession: (args: CompleteSessionArgs) => CompletionPayout;
   clearLastCompletion: () => void;
   /** Persist a snapshot of the in-flight session so an app-kill mid-session can
-   *  be reconciled on next boot (M5). Cleared by completeSession on clean exit. */
-  trackSession: (snapshot: InProgressSession) => void;
+   *  be reconciled on next boot (M5). Cleared by completeSession on clean exit,
+   *  or with `null` when an undo rolls the session back to zero reviews. */
+  trackSession: (snapshot: InProgressSession | null) => void;
 
   setCardProps: (cardIds: string[], patch: Partial<Card>) => void;
   buryCard: (cardId: string) => void;
@@ -172,6 +182,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     stateRef.current = state;
   }, [state]);
 
+  // Mirror `ready` for the flush callback, whose empty dep array can't observe
+  // `ready` directly — it must honour the same write-gate as the debounced save.
+  const readyRef = useRef(ready);
+  useEffect(() => {
+    readyRef.current = ready;
+  }, [ready]);
+
   /* ------------------------------------------------------ load & save */
 
   useEffect(() => {
@@ -212,7 +229,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Used by the background/unmount flush so the last <=400ms of changes (e.g.
   // a just-finished session) are not dropped on an OS suspend/kill (M16).
   const flushSave = useCallback(() => {
-    if (!canSaveRef.current) return;
+    // Gate on `ready` too, not just canSaveRef: during the initial load window
+    // `state`/`stateRef.current` are still the blank seed and `ready` is false,
+    // so a background/unmount flush here would overwrite intact stored data with
+    // the seed before the read that would have loaded it (a regression the M16
+    // flush introduced past C1's gate).
+    if (!readyRef.current || !canSaveRef.current) return;
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
@@ -321,13 +343,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const completeSession = useCallback<DataActions['completeSession']>((args) => {
     const now = Date.now();
-    const today = dayKeyOf(now);
+    // Attribute the payout to the day the user actually studied (the session's
+    // start day), not completeSession's own clock — which differs for a session
+    // finishing after local midnight or one banked by the boot reconciler on a
+    // later day. Falls back to `now` for a legacy marker that carries no day.
+    const studyDay = attributionDay(args.studyDay, now);
     const prev = stateRef.current;
     const person = prev.person;
 
     // Streak roll. Depends only on `person` (streak/lastStudyDay/freezes), which
     // the session's final rateCard never touches — so this snapshot is accurate.
-    const roll = rollStreak(person, today);
+    const roll = rollStreak(person, studyDay);
     const streak = roll.streak;
     const freezes = roll.freezes;
     const freezeUsedDays = roll.freezeUsedDays;
@@ -347,7 +373,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const session: SessionRecord = {
       id: uid('s'),
-      dayKey: today,
+      dayKey: studyDay,
       atMs: now,
       kind: args.kind,
       counts: args.counts,
@@ -427,7 +453,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         bestStreak: Math.max(s.person.bestStreak, streak),
         freezes: freezesAfter,
         freezeUsedDays,
-        lastStudyDay: today,
+        lastStudyDay: studyDay,
         dayDone: normalizedDayDone(s.person, now),
         fastAnswers: s.person.fastAnswers + args.fastAnswers,
         achievements: { ...s.person.achievements, ...newAchievements },
