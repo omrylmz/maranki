@@ -4,7 +4,7 @@
 import { describe, expect, test } from '@jest/globals';
 
 import { addDays, DayDone, Person } from '../domain/types';
-import { rollStreak, tallyReview, untallyReview } from './tally';
+import { attributionDay, rollStreak, tallyReview, untallyReview } from './tally';
 
 const TODAY = '2026-06-30';
 const day = (): DayDone => ({ dayKey: TODAY, reviews: 5, neww: 2 });
@@ -92,6 +92,38 @@ describe('rollStreak', () => {
     const roll = rollStreak(person({ lastStudyDay: '', streak: 0 }), TODAY);
     expect(roll.streak).toBe(1);
     expect(roll.advanced).toBe(true);
+  });
+});
+
+describe('attributionDay (cross-midnight / reconcile day attribution)', () => {
+  // The completion instant falls on July 1, but the session's reviews happened
+  // on June 30 (its study day). Attribution must follow the study day.
+  const STUDY_DAY = '2026-06-30';
+  const afterMidnight = new Date(2026, 6, 1, 0, 1).getTime(); // 2026-07-01 00:01 local
+
+  test('uses the explicit study day when present, ignoring the completion instant', () => {
+    expect(attributionDay(STUDY_DAY, afterMidnight)).toBe('2026-06-30');
+  });
+
+  test('falls back to the completion day only for a legacy marker with no study day', () => {
+    expect(attributionDay(undefined, afterMidnight)).toBe('2026-07-01');
+  });
+
+  test('a session spanning midnight keeps the streak instead of resetting it', () => {
+    // Studied every day through the 29th; the 30th's session finishes at 00:01.
+    const p = person({ lastStudyDay: '2026-06-29', streak: 10, freezes: 0 });
+    const byStudyDay = rollStreak(p, attributionDay(STUDY_DAY, afterMidnight));
+    expect(byStudyDay.streak).toBe(11); // 29th → 30th, advanced
+    // Attributing by the completion instant instead would have reset it:
+    const byCompletionInstant = rollStreak(p, attributionDay(undefined, afterMidnight));
+    expect(byCompletionInstant.streak).toBe(1);
+  });
+
+  test('a session spanning midnight does not burn a freeze for a day it studied', () => {
+    const p = person({ lastStudyDay: '2026-06-29', streak: 10, freezes: 1 });
+    const byStudyDay = rollStreak(p, attributionDay(STUDY_DAY, afterMidnight));
+    expect(byStudyDay.freezes).toBe(1); // freeze intact
+    expect(byStudyDay.freezeUsedDays).not.toContain('2026-06-30');
   });
 });
 

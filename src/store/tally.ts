@@ -9,7 +9,23 @@
  *     whether THIS session is the day's first.
  */
 import { MAX_FREEZES } from '../domain/gamification';
-import { addDays, DayDone, Person } from '../domain/types';
+import { addDays, DayDone, dayKeyOf, Person } from '../domain/types';
+
+/**
+ * The calendar day a completed session's payout (streak roll, SessionRecord,
+ * lastStudyDay) is attributed to. Prefer the session's own study day — the day
+ * its reviews were tallied — falling back to the completion instant only when
+ * it's absent (a legacy in-flight marker).
+ *
+ * Attributing by the completion instant alone is wrong twice over: a session
+ * that finishes just after local midnight would credit the next day (resetting
+ * the streak or burning a freeze for a day the user actually studied), and an
+ * interrupted session banked by the boot reconciler would credit the reopen day
+ * rather than the study day.
+ */
+export function attributionDay(studyDay: string | undefined, nowMs: number): string {
+  return studyDay ?? dayKeyOf(nowMs);
+}
 
 /** The day's tallies after rating one card. */
 export function tallyReview(

@@ -168,6 +168,14 @@ export interface InProgressSession {
   bestRun: number;
   durationSec: number;
   fastAnswers: number;
+  /**
+   * The calendar day the session's reviews belong to (its start day), so the
+   * boot reconciler banks the payout under the day the user actually studied —
+   * not the day the app happens to be reopened. Optional so a marker persisted
+   * by an older build still deserializes; completeSession falls back to the
+   * completion instant when it's absent.
+   */
+  studyDay?: string;
 }
 
 export interface Person {

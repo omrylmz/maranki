@@ -76,6 +76,12 @@ export default function BrowseScreen() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate one-render cascade on navigation; deriving instead would break "Clear filters".
     setFDecks(params.deckId ? [params.deckId] : []);
+    // A scope change also invalidates any in-progress multi-select: the selected
+    // ids belong to the previous scope's cards, which are no longer on screen, so
+    // bulk actions/"Study these" would silently hit off-screen cards. Exit select
+    // mode on navigation (#5, sibling of the M8 fDecks leak just above).
+    setSelecting(false);
+    setSel([]);
   }, [params.deckId]);
 
   const now = useNow();
