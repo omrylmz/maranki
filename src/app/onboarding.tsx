@@ -34,8 +34,10 @@ export default function OnboardingScreen() {
   const finish = () => {
     applyChoices();
     // Blank slate: no decks are seeded, so there is no session to jump into.
-    // Land the learner on Home to add their first deck.
-    router.replace('/(tabs)');
+    // Pop back to the live (tabs) root (onboarding was pushed on top of it) so
+    // the learner lands on Home — router.back() matches skip() and avoids
+    // stacking a duplicate (tabs) entry that router.replace('/(tabs)') would.
+    router.back();
   };
 
   const skip = () => {
