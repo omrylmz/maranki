@@ -1,6 +1,7 @@
 /**
- * Anki note → card mapping. Pins the cloze split + model gating (L16), the
- * article split on import (L17), and multilingual field-role detection (M12).
+ * Anki note → card mapping. Pins the cloze split + model gating (L16), field-role
+ * detection by the model's field NAMES with a positional fallback (M12), and the
+ * subdeck grouping invariant (union of section payloads === the flat payload).
  */
 import { describe, expect, test } from '@jest/globals';
 
@@ -27,16 +28,18 @@ describe('parseAnkiModels', () => {
 
 describe('mapAnkiNote — normal notes', () => {
   test('maps front/back by model field NAMES, not position', () => {
-    const model: AnkiModel = { name: 'Basic', type: 0, flds: ['Grammar', 'Word', 'Translation'] };
-    const [card] = mapAnkiNote(`adj${SEP}der Hund${SEP}the dog`, '', model);
-    // Word is field 1 (not 0 = Grammar); article is split off.
-    expect(card).toMatchObject({ word: 'der Hund', article: 'der', base: 'Hund', tr: 'the dog' });
+    const model: AnkiModel = { name: 'Basic', type: 0, flds: ['Grammar', 'Front', 'Back'] };
+    const [card] = mapAnkiNote(`adj${SEP}hello${SEP}a greeting`, '', model);
+    // Front is field 1 (not 0 = Grammar) because the name, not the position, wins.
+    expect(card).toMatchObject({ front: 'hello', back: 'a greeting' });
   });
 
-  test('M12: recognises Spanish/French field names', () => {
-    const model: AnkiModel = { name: 'Vocab', type: 0, flds: ['Palabra', 'Traducción'] };
+  test('M12: unrecognised field names fall back to positional front/back', () => {
+    // No name matches a known front/back role → field 0 is the front, the next
+    // filled field is the back. An unknown-schema deck is never mis-imported.
+    const model: AnkiModel = { name: 'Vocab', type: 0, flds: ['Alpha', 'Beta'] };
     const [card] = mapAnkiNote(`gato${SEP}cat`, '', model);
-    expect(card).toMatchObject({ word: 'gato', tr: 'cat' });
+    expect(card).toMatchObject({ front: 'gato', back: 'cat' });
   });
 
   test('returns [] only when EVERY field is empty (a non-empty field is salvaged)', () => {
@@ -56,27 +59,27 @@ describe('mapAnkiNote — cloze (L16)', () => {
     const cards = mapAnkiNote(note, '', clozeModel);
     expect(cards).toHaveLength(2);
     // c1 card: blank c1, REVEAL c2's answer.
-    expect(cards[0]).toMatchObject({ word: '[…] is the capital of France', tr: 'Paris' });
+    expect(cards[0]).toMatchObject({ front: '[…] is the capital of France', back: 'Paris' });
     // c2 card: reveal c1, blank c2.
-    expect(cards[1]).toMatchObject({ word: 'Paris is the capital of […]', tr: 'France' });
+    expect(cards[1]).toMatchObject({ front: 'Paris is the capital of […]', back: 'France' });
   });
 
   test('uses the hint as the blank when present', () => {
     const [card] = mapAnkiNote('The {{c1::cat::animal}} sat', '', clozeModel);
-    expect(card.word).toBe('The [animal] sat');
-    expect(card.tr).toBe('cat');
+    expect(card.front).toBe('The [animal] sat');
+    expect(card.back).toBe('cat');
   });
 
   test('a NON-cloze model is NOT cloze-processed even if a field mentions {{cN::}}', () => {
     const basic: AnkiModel = { name: 'Basic', type: 0, flds: ['Front', 'Back'] };
     const cards = mapAnkiNote(`The {{c1::cat}} sat${SEP}meaning`, '', basic);
     expect(cards).toHaveLength(1); // not split
-    expect(cards[0].word).toBe('The cat sat'); // markup unwrapped, not blanked
-    expect(cards[0].tr).toBe('meaning');
+    expect(cards[0].front).toBe('The cat sat'); // markup unwrapped, not blanked
+    expect(cards[0].back).toBe('meaning');
   });
 
   test('an unknown model falls back to content-based cloze detection', () => {
-    const cards = mapAnkiNote('{{c1::eins}} und {{c2::zwei}}', '', undefined);
+    const cards = mapAnkiNote('{{c1::one}} and {{c2::two}}', '', undefined);
     expect(cards).toHaveLength(2);
   });
 });
@@ -167,8 +170,8 @@ describe('groupNotesBySection', () => {
     const union = sections.flatMap((s) => s.payload);
     expect(union).toHaveLength(payload.length);
     // Same objects, same order per section concat (import-all === import-whole-deck).
-    const words = union.map((c) => c.word).sort();
-    expect(words).toEqual(payload.map((c) => c.word).sort());
+    const fronts = union.map((c) => c.front).sort();
+    expect(fronts).toEqual(payload.map((c) => c.front).sort());
   });
 
   test('single-section input yields exactly one section', () => {

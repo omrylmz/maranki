@@ -1,23 +1,12 @@
 /**
- * Card peek — the universal card detail sheet. Audio (real TTS), example,
- * state/level/interval badges, quick state toggles (real writes), and the
- * pronunciation-practice entry (stub per WIRING.md §3 — C4 backend).
+ * Card peek — the universal card detail sheet. Front/back, example, state and
+ * interval badges, and quick state toggles (real writes).
  */
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import {
-  Btn,
-  IconBtn,
-  Ion,
-  LevelBadge,
-  Pill,
-  TypePill,
-  Sheet,
-  StateBadge,
-} from '@/components/ui';
-import { speakWord } from '@/domain/speech';
+import { Btn, Ion, Pill, Sheet, StateBadge } from '@/components/ui';
 import { formatIntervalDays } from '@/domain/srs';
 import { Card, displayState, MASTERED_INTERVAL_DAYS } from '@/domain/types';
 import { useData } from '@/store/DataContext';
@@ -71,49 +60,29 @@ export function CardPeek({ card: cardProp, onClose }: CardPeekProps) {
 
   return (
     <Sheet open={open} onClose={onClose} onClosed={() => setCard(null)}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              font('serif', 600),
-              { fontSize: 28, lineHeight: 31, letterSpacing: -0.42, color: c.ink },
-            ]}
-          >
-            {card.word}
-          </Text>
-          {card.ipa ? (
-            <Text
-              numberOfLines={1}
-              style={[font('mono', 400), { fontSize: 13, color: c.ink3, marginTop: 5 }]}
-            >
-              {card.ipa}
-            </Text>
-          ) : null}
-        </View>
-        <IconBtn
-          icon="volume-high-outline"
-          size={38}
-          iconSize={19}
-          color={c.pine}
-          bg={c.pineTint}
-          onPress={() => speakWord(card.word, card.lang)}
-        />
-      </View>
+      <Text
+        style={[
+          font('serif', 600),
+          { fontSize: 28, lineHeight: 31, letterSpacing: -0.42, color: c.ink },
+        ]}
+      >
+        {card.front}
+      </Text>
 
       <Text style={[font('sans', 700), { fontSize: 17, color: c.ink, marginTop: 12, marginBottom: 2 }]}>
-        {card.tr}
+        {card.back}
       </Text>
-      {card.ex ? (
+      {card.example ? (
         <View style={{ marginTop: 10 }}>
           <Text style={[font('serif', 400, true), { fontSize: 15.5, lineHeight: 22, color: c.ink2 }]}>
-            {card.ex}
+            {card.example}
           </Text>
-          {card.exTr ? (
-            <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink3, marginTop: 2 }]}>
-              {card.exTr}
-            </Text>
-          ) : null}
         </View>
+      ) : null}
+      {card.notes ? (
+        <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink3, marginTop: 8, lineHeight: 18 }]}>
+          {card.notes}
+        </Text>
       ) : null}
 
       <View
@@ -127,8 +96,7 @@ export function CardPeek({ card: cardProp, onClose }: CardPeekProps) {
         }}
       >
         <StateBadge state={state} label={state} />
-        {card.level != null && <LevelBadge level={card.level} />}
-        {card.type != null && <TypePill type={card.type} />}
+        {card.tags?.map((t) => <Pill key={t}>{t}</Pill>)}
         {card.intervalDays > 0 && card.stepIndex === null ? (
           <Pill mono>next in {formatIntervalDays(card.intervalDays)}</Pill>
         ) : null}
@@ -142,7 +110,7 @@ export function CardPeek({ card: cardProp, onClose }: CardPeekProps) {
         })}
         {quick('Learning', 'school-outline', card.stepIndex !== null, () => {
           actions.updateCard(card.id, { stepIndex: 0, intervalDays: 0, due: now });
-          show(`${card.base} moved back to learning`);
+          show(`${card.front} moved back to learning`);
           onClose();
         })}
         {quick('Learned', 'checkmark-circle-outline', card.intervalDays >= MASTERED_INTERVAL_DAYS, () => {
@@ -152,33 +120,21 @@ export function CardPeek({ card: cardProp, onClose }: CardPeekProps) {
             intervalDays: Math.max(card.intervalDays, MASTERED_INTERVAL_DAYS),
             due: now + MASTERED_INTERVAL_DAYS * 86_400_000,
           });
-          show(`${card.base} marked learned`);
+          show(`${card.front} marked learned`);
           onClose();
         })}
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Btn
-          kind="secondary"
-          full
-          style={{ flex: 1 }}
-          icon="mic-outline"
-          onPress={() => show('Pronunciation practice — record & compare')}
-        >
-          Say it
-        </Btn>
-        <Btn
-          full
-          style={{ flex: 1 }}
-          icon="pencil"
-          onPress={() => {
-            onClose();
-            router.push({ pathname: '/card-editor', params: { cardId: card.id } });
-          }}
-        >
-          Edit card
-        </Btn>
-      </View>
+      <Btn
+        full
+        icon="pencil"
+        onPress={() => {
+          onClose();
+          router.push({ pathname: '/card-editor', params: { cardId: card.id } });
+        }}
+      >
+        Edit card
+      </Btn>
     </Sheet>
   );
 }

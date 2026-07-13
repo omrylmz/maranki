@@ -39,7 +39,6 @@ import { ApkgError, apkgErrorMessage, parseApkg } from '@/domain/importApkg';
 import { detectImportKind, ParsedImport, parseImportCsv } from '@/domain/importFile';
 import { ImportCardPayload } from '@/domain/importSamples';
 import { Deck } from '@/domain/types';
-import { inferLang, LANG_FLAGS } from '@/domain/words';
 import { useData } from '@/store/DataContext';
 import { useSnackbar } from '@/store/SnackbarContext';
 import { font, tnum } from '@/theme/tokens';
@@ -49,14 +48,11 @@ type Stage = 'idle' | 'sections' | 'preview' | 'importing' | 'done';
 
 /**
  * A pending .apkg pick that split into >1 subdeck — held while the user chooses
- * which subdecks to import (the 'sections' stage). Its flag/lang are inferred
- * once from the whole-deck name + field names; the final deck name is derived
+ * which subdecks to import (the 'sections' stage). The final deck name is derived
  * from the SELECTION at Continue time via ankiDeckName().
  */
 type PendingSections = {
   name: string;
-  flag: string;
-  lang: string;
   sections: ImportSection[];
 };
 
@@ -67,11 +63,11 @@ type PendingSections = {
  */
 type Staged =
   | { source: 'ankiweb'; id: string; name: string; deck: AnkiWebDeck | null }
-  | { source: 'file'; name: string; flag: string; lang: string; payload: ImportCardPayload[] };
+  | { source: 'file'; name: string; payload: ImportCardPayload[] };
 
 const SEARCH_DEBOUNCE_MS = 350;
-/** German-learning app: an empty query still surfaces useful (German) decks. */
-const DEFAULT_QUERY = 'german';
+/** An empty query still surfaces useful, widely-shared decks to start from. */
+const DEFAULT_QUERY = 'popular';
 
 export default function ImportScreen() {
   const c = useColors();
@@ -186,26 +182,21 @@ export default function ImportScreen() {
       const file = picked.result; // narrowed to File by the `canceled` discriminant
 
       // Hand a parsed deck to the existing staged flow.
-      const finish = ({ payload, name, fieldNames, sections }: ParsedImport) => {
+      const finish = ({ payload, name, sections }: ParsedImport) => {
         if (payload.length === 0) {
           show('No cards found in that file.');
           return;
         }
-        // Infer the language from the deck/file name AND any column headers /
-        // Anki field names, so TTS matches the words instead of forcing German
-        // on every import (H6).
-        const lang = inferLang([name, ...(fieldNames ?? [])]);
-        const flag = LANG_FLAGS[lang] ?? '📄';
-        // A multi-subdeck .apkg (German::Verbs::B1, …) → let the user pick which
+        // A multi-subdeck .apkg (Course::Unit 1, …) → let the user pick which
         // subdecks to import. A single-deck .apkg / CSV / AnkiWeb keeps the flat
         // flow untouched (sections is undefined for those).
         if (sections && sections.length > 1) {
-          setPending({ name, flag, lang, sections });
+          setPending({ name, sections });
           setSelected(new Set(sections.map((s) => s.did)));
           setStage('sections');
           return;
         }
-        stageItem({ source: 'file', name, flag, lang, payload });
+        stageItem({ source: 'file', name, payload });
       };
 
       // Read the raw bytes ONCE and classify by magic. Android SAF often returns
@@ -267,7 +258,7 @@ export default function ImportScreen() {
 
     try {
       let payload: ImportCardPayload[];
-      let deckFields: Pick<Deck, 'name' | 'flag' | 'lang'>;
+      let deckFields: Pick<Deck, 'name'>;
 
       if (chosen.source === 'ankiweb') {
         const bytes = await downloadSharedDeck(chosen.id, ctrl.signal);
@@ -278,26 +269,25 @@ export default function ImportScreen() {
         const parsed = await parseApkg(bytes, chosen.name);
         if (ctrl.signal.aborted || !mountedRef.current) return;
         payload = parsed.payload;
-        const lang = inferLang([parsed.name, chosen.name, ...(parsed.fieldNames ?? [])]);
-        deckFields = { name: parsed.name, flag: LANG_FLAGS[lang] ?? '🇩🇪', lang };
+        deckFields = { name: parsed.name };
       } else {
         payload = chosen.payload;
-        deckFields = { name: chosen.name, flag: chosen.flag, lang: chosen.lang };
+        deckFields = { name: chosen.name };
       }
 
-      // Dedupe against existing library words; importDeck preserves any SRS
-      // fields the payload carries (Anki fidelity). No await past this point, so
-      // a late Cancel can't interleave between the check and the write.
-      const have = new Set(state.cards.map((x) => x.word.toLowerCase()));
-      const fresh = payload.filter((p) => !have.has(p.word.toLowerCase()));
+      // Dedupe against existing library cards by front; importDeck preserves any
+      // SRS fields the payload carries (Anki fidelity). No await past this point,
+      // so a late Cancel can't interleave between the check and the write.
+      const have = new Set(state.cards.map((x) => x.front.toLowerCase()));
+      const fresh = payload.filter((p) => !have.has(p.front.toLowerCase()));
 
-      // Every word is already in the library — don't create a phantom 0-card deck
+      // Every card is already in the library — don't create a phantom 0-card deck
       // with a dead "Study the new cards" CTA. Say so and stay on the preview (M11).
       if (fresh.length === 0) {
         if (!mountedRef.current) return;
         setImportPhase(null);
         setStage('preview');
-        show('Nothing new to import — every word is already in your library.');
+        show('Nothing new to import — every card is already in your library.');
         return;
       }
 
@@ -344,11 +334,11 @@ export default function ImportScreen() {
 
   /* ------------------------- .apkg subdeck picker tree -------------------------
    * Strip the segments the subdecks all share (same idea as ankiDeckName —
-   * ['German'] for German::Vocabulary::A1 + German::Grammar::B1 …) then group the
-   * remainder by its first segment: 'Vocabulary' → [A1, B1], 'Verbs' → [A1, B1],
-   * so the picker reads as categories with level leaves. 1 remaining level → a
-   * flat list; the stripping never consumes a section's whole path (so every row
-   * keeps a label). Pure derivation — no setState here (React Compiler rule). */
+   * ['Course'] for Course::Unit 1::Part A + Course::Unit 2::Part A …) then group
+   * the remainder by its first segment: 'Unit 1' → [Part A, Part B], so the
+   * picker reads as categories with leaf rows. 1 remaining level → a flat list;
+   * the stripping never consumes a section's whole path (so every row keeps a
+   * label). Pure derivation — no setState here (React Compiler rule). */
   const tree = useMemo(() => {
     const secs = pending?.sections ?? [];
     if (secs.length === 0) return { mode: 'flat' as const, leaves: [], groups: [] };
@@ -441,7 +431,7 @@ export default function ImportScreen() {
       chosenSections.map((s) => s.name),
       pending.name,
     );
-    stageItem({ source: 'file', name, flag: pending.flag, lang: pending.lang, payload });
+    stageItem({ source: 'file', name, payload });
   };
 
   /* Preview rows differ by source: a file item knows its exact payload (so it
@@ -450,8 +440,8 @@ export default function ImportScreen() {
   const previewRows = useMemo<[string, string][]>(() => {
     if (!chosen) return [];
     if (chosen.source === 'file') {
-      const have = new Set(state.cards.map((x) => x.word.toLowerCase()));
-      const dupes = chosen.payload.filter((p) => have.has(p.word.toLowerCase())).length;
+      const have = new Set(state.cards.map((x) => x.front.toLowerCase()));
+      const dupes = chosen.payload.filter((p) => have.has(p.front.toLowerCase())).length;
       const withProgress = chosen.payload.filter((p) => (p.reps ?? 0) > 0).length;
       return [
         ['Cards', chosen.payload.length.toLocaleString('en-US')],
@@ -491,14 +481,14 @@ export default function ImportScreen() {
   const caption = ankiId
     ? 'From your link'
     : q.trim() === ''
-      ? 'Popular for German learners'
+      ? 'Popular decks'
       : 'Search results';
 
   return (
     <View style={{ flex: 1, backgroundColor: c.paper }}>
       <StackBar
         title="Import"
-        sub="Bring your own vocabulary"
+        sub="Bring your own cards"
         backIcon="close"
         onBack={() => router.back()}
       />
@@ -716,8 +706,8 @@ export default function ImportScreen() {
                     { fontSize: 12.5, lineHeight: 19, color: c.ink3, marginTop: 12 },
                   ]}
                 >
-                  CSV columns map to Word, Translation, Example, Level, Type, Pronunciation and
-                  Tags — you’ll confirm the mapping before anything is written.
+                  CSV columns map to Front, Back, Example, Notes and Tags — you’ll confirm the
+                  mapping before anything is written.
                 </Text>
               </View>
             )}

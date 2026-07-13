@@ -150,12 +150,7 @@ export async function parseApkg(bytes: Uint8Array, fileName: string): Promise<Pa
     if (payload.length === 0) throw new ApkgError('empty', 'No notes with a front field.');
 
     const name = ankiDeckName(deckNames, deckNameFromFile(fileName));
-    // The model field names (e.g. "Palabra"/"Traducción") let inferLang pick the
-    // language when the deck name carries no hint (H6).
-    const fieldNames = Object.keys(models)
-      .flatMap((mid) => models[mid].flds)
-      .filter((f) => f !== '');
-    return { payload, name, fieldNames, sections };
+    return { payload, name, sections };
   } finally {
     try {
       await db.closeAsync();

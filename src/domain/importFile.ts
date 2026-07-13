@@ -10,18 +10,16 @@
  *      derived from the file name). The result is fed straight into the existing
  *      staged flow: the caller stages { payload, name } as a 'file' import item,
  *      so preview → progress → done → "Study the new deck" is reused as-is.
- *      importDeck() (DataContext) fills SRS defaults + lang for any field we omit.
+ *      importDeck() (DataContext) fills SRS defaults for any field we omit.
  *
  * Constraints: no React, no I/O, no Date.now / Math.random — deterministic and
  * unit-testable. Hermes-safe (no String.prototype.normalize / replaceAll).
  *
  * CSV column contract promised by the import UI (positional):
- *   0 Word · 1 Translation · 2 Example · 3 Level · 4 Type · 5 Pronunciation · 6 Tags
+ *   0 Front · 1 Back · 2 Example · 3 Notes · 4 Tags
  */
 import type { ImportSection } from './anki';
 import { ImportCardPayload } from './importSamples';
-import { CefrLevel, WordType } from './types';
-import { splitArticle } from './words';
 
 export type ImportKind = 'csv' | 'apkg' | 'unknown';
 
@@ -31,12 +29,6 @@ export interface ParsedImport {
   /** Deck name derived from the file name (extension stripped). */
   name: string;
   /**
-   * Field/header labels when the source exposes them (CSV header row, Anki model
-   * field names). Fed to inferLang so a foreign header (Palabra/Traducción) sets
-   * the language even when the deck name carries no hint (H6). Absent ⇒ no header.
-   */
-  fieldNames?: string[];
-  /**
    * Selectable subdecks when an .apkg holds MORE THAN ONE deck (German::Verbs::B1
    * …), letting the UI offer "import just this subdeck". Set only when there is a
    * real choice (>1 section); a single-deck package leaves this undefined so the
@@ -44,18 +36,6 @@ export interface ParsedImport {
    */
   sections?: ImportSection[];
 }
-
-const CEFR_LEVELS: readonly CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
-const WORD_TYPES: readonly WordType[] = [
-  'noun',
-  'verb',
-  'adjective',
-  'adverb',
-  'phrase',
-  'preposition',
-  'pronoun',
-  'conjunction',
-];
 
 /* ----------------------------------------------------------- file helpers */
 
@@ -330,8 +310,8 @@ const HEADER_FIRST_CELLS = new Set<string>([
   'headword',
   'lemma',
   'wort',
-  // Foreign word-column labels (folded): es/fr/it/de. Recognising these lets a
-  // foreign header be both skipped and used as a language hint (H6/L20).
+  // Foreign front-column labels (folded): es/fr/it/de. Recognising these lets a
+  // foreign header row be skipped (invisible import robustness).
   'palabra',
   'mot',
   'parola',
@@ -356,20 +336,15 @@ const HEADER_OTHER_CELLS = new Set<string>([
   'examples',
   'sentence',
   'usage',
-  'level',
-  'cefr',
-  'type',
-  'pos',
-  'pronunciation',
-  'ipa',
-  'reading',
+  'note',
+  'notes',
   'tag',
   'tags',
   'ubersetzung',
   'bedeutung',
   'beispiel',
   'wort',
-  // Foreign translation/example/answer labels (folded): es/fr/it.
+  // Foreign back/example/answer labels (folded): es/fr/it.
   'traduccion',
   'traduction',
   'traduzione',
@@ -396,100 +371,6 @@ const HEADER_OTHER_CELLS = new Set<string>([
 function isHeaderRow(row: string[]): boolean {
   if (!HEADER_FIRST_CELLS.has(leadingToken(row[0] ?? ''))) return false;
   return row.slice(1).some((cell) => HEADER_OTHER_CELLS.has(leadingToken(cell)));
-}
-
-/**
- * Parse free text to a CEFR level, tolerant of "Level B2" etc. Returns null
- * when the input is absent or unrecognised, so a missing column reads as "no
- * level" rather than a fabricated A1.
- */
-export function clampLevel(raw: string | undefined): CefrLevel | null {
-  if (!raw) return null;
-  const up = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  for (const lv of CEFR_LEVELS) {
-    if (up === lv) return lv;
-  }
-  const m = up.match(/[ABC][12]/);
-  if (m && (CEFR_LEVELS as readonly string[]).includes(m[0])) return m[0] as CefrLevel;
-  return null;
-}
-
-const TYPE_ALIASES: Record<string, WordType> = {
-  // noun
-  n: 'noun',
-  nn: 'noun',
-  noun: 'noun',
-  nouns: 'noun',
-  nomen: 'noun',
-  substantiv: 'noun',
-  substantive: 'noun',
-  sustantivo: 'noun',
-  nom: 'noun',
-  // verb
-  v: 'verb',
-  vb: 'verb',
-  verb: 'verb',
-  verbs: 'verb',
-  verbo: 'verb',
-  verbe: 'verb',
-  // adjective
-  adj: 'adjective',
-  adjective: 'adjective',
-  adjectives: 'adjective',
-  adjektiv: 'adjective',
-  adjetivo: 'adjective',
-  adjectif: 'adjective',
-  // adverb
-  adv: 'adverb',
-  adverb: 'adverb',
-  adverbs: 'adverb',
-  adverbio: 'adverb',
-  adverbe: 'adverb',
-  // phrase
-  phr: 'phrase',
-  phrase: 'phrase',
-  phrases: 'phrase',
-  idiom: 'phrase',
-  expression: 'phrase',
-  sentence: 'phrase',
-  satz: 'phrase',
-  frase: 'phrase',
-  redewendung: 'phrase',
-  // preposition
-  prep: 'preposition',
-  preposition: 'preposition',
-  praposition: 'preposition',
-  preposicion: 'preposition',
-  // pronoun
-  pron: 'pronoun',
-  pronoun: 'pronoun',
-  pronouns: 'pronoun',
-  pronomen: 'pronoun',
-  pronombre: 'pronoun',
-  // conjunction
-  conj: 'conjunction',
-  conjunction: 'conjunction',
-  konjunktion: 'conjunction',
-  conjuncion: 'conjunction',
-};
-
-/**
- * Map free-text part-of-speech to a WordType. Returns null when the input is
- * absent or unrecognised, so a missing column reads as "no type" rather than a
- * fabricated noun.
- */
-function mapType(raw: string | undefined): WordType | null {
-  if (!raw) return null;
-  const token = foldAscii(raw.toLowerCase()).replace(/[^a-z]/g, '');
-  if (!token) return null;
-  const exact = TYPE_ALIASES[token];
-  if (exact) return exact;
-  if (token.length >= 3) {
-    for (const wt of WORD_TYPES) {
-      if (token.startsWith(wt) || wt.startsWith(token)) return wt;
-    }
-  }
-  return null;
 }
 
 /** Split tag text on | ; or , — folding any spillover columns back in first. */
@@ -528,36 +409,25 @@ export function parseImportCsv(text: string, fileName: string): ParsedImport {
 
   // Skip the first row only if it reads like a header.
   const start = isHeaderRow(rows[0]) ? 1 : 0;
-  // A real header row doubles as a language hint (Palabra/Traducción → Spanish).
-  const fieldNames =
-    start === 1 ? rows[0].map((cell) => cell.trim()).filter((cell) => cell !== '') : undefined;
 
   const payload: ImportCardPayload[] = [];
   for (let r = start; r < rows.length; r++) {
     const cols = rows[r];
-    const word = (cols[0] ?? '').trim();
-    if (word === '') continue; // a card must have a front
+    const front = (cols[0] ?? '').trim();
+    if (front === '') continue; // a card must have a front
 
-    const tr = (cols[1] ?? '').trim();
-    const ex = (cols[2] ?? '').trim();
-    const ipa = (cols[5] ?? '').trim();
-    const tags = parseTags(cols.slice(6));
-    const { article, base } = splitArticle(word);
+    const back = (cols[1] ?? '').trim();
+    const example = (cols[2] ?? '').trim();
+    const notes = (cols[3] ?? '').trim();
+    const tags = parseTags(cols.slice(4));
 
-    const card: ImportCardPayload = {
-      word,
-      tr,
-      level: clampLevel(cols[3]),
-      type: mapType(cols[4]),
-      article,
-      base,
-    };
-    if (ex) card.ex = ex;
-    if (ipa) card.ipa = ipa;
+    const card: ImportCardPayload = { front, back };
+    if (example) card.example = example;
+    if (notes) card.notes = notes;
     if (tags) card.tags = tags;
 
     payload.push(card);
   }
 
-  return { payload, name, fieldNames };
+  return { payload, name };
 }

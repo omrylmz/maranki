@@ -4,15 +4,7 @@
  */
 import * as Speech from 'expo-speech';
 
-import { Lang } from './types';
-
-const LOCALE: Record<Lang, string> = {
-  de: 'de-DE',
-  es: 'es-ES',
-  fr: 'fr-FR',
-};
-
-export function speakWord(text: string, lang: Lang): void {
+export function speak(text: string): void {
   Speech.stop();
-  Speech.speak(text, { language: LOCALE[lang] ?? 'en-US', rate: 0.92 });
+  Speech.speak(text, { rate: 0.95 });
 }

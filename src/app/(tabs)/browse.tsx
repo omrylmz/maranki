@@ -1,7 +1,7 @@
 /**
  * Library (Browse) — search, inspect, organize (B1: browse = manage).
- * Free-text search with working filter tokens (level:B1 · type:verb ·
- * deck:"…"), state-dot ledger rows, the universal card peek, multi-select
+ * Free-text search with working filter tokens (tag:verb · deck:"…"),
+ * state-dot ledger rows, the universal card peek, multi-select
  * with a real bulk action bar (B8), and cause-split empty states (B7).
  * Sort and the filter-sheet chips are wired for real (they held no state
  * in the mock — WIRING.md §3 listed them as stubs to build).
@@ -18,7 +18,6 @@ import {
   Chip,
   FAB,
   Ion,
-  LevelBadge,
   Overline,
   ScreenHead,
   Sheet,
@@ -32,7 +31,7 @@ import {
   type StatusFilter,
 } from '@/domain/browseFilter';
 import { formatIntervalDays } from '@/domain/srs';
-import { Card, CefrLevel, displayState } from '@/domain/types';
+import { Card, displayState } from '@/domain/types';
 import { useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { useSnackbar } from '@/store/SnackbarContext';
@@ -46,7 +45,6 @@ const SORT_LABEL: Record<SortMode, string> = {
   hardest: 'hardest',
 };
 const SORT_CYCLE: SortMode[] = ['smart', 'az', 'newest', 'hardest'];
-const LEVELS: CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 export default function BrowseScreen() {
   const c = useColors();
@@ -64,7 +62,7 @@ export default function BrowseScreen() {
   const [sel, setSel] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [fLevels, setFLevels] = useState<CefrLevel[]>([]);
+  const [fTags, setFTags] = useState<string[]>([]);
   const [fStatus, setFStatus] = useState<StatusFilter[]>([]);
   const [fDecks, setFDecks] = useState<string[]>([]);
 
@@ -86,13 +84,16 @@ export default function BrowseScreen() {
 
   const now = useNow();
 
-  // Level/type metadata is per-card and nullable (imports leave it null), so
-  // the level badge, the level filter and the level:/type: search tokens gate
-  // on the card carrying a value — not on deck provenance. Level and type are
-  // populated independently (a CSV may carry one column and not the other), so
-  // the Level filter chips and each search hint gate on their own axis.
-  const hasLevel = useMemo(() => state.cards.some((x) => x.level != null), [state.cards]);
-  const hasType = useMemo(() => state.cards.some((x) => x.type != null), [state.cards]);
+  // Tags are per-card and optional. The Tags filter section and the tag: search
+  // hint only surface when some card actually carries a tag; the distinct set is
+  // gathered across all cards so scoping to a deck never hides a tag the sheet
+  // could still match.
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    state.cards.forEach((x) => x.tags?.forEach((t) => set.add(t)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [state.cards]);
+  const hasTags = allTags.length > 0;
 
   const cards = useMemo(
     () =>
@@ -100,7 +101,7 @@ export default function BrowseScreen() {
         state.cards,
         state.decks,
         state.collections,
-        { collectionId: params.collectionId, chip, q, sort, fLevels, fStatus, fDecks },
+        { collectionId: params.collectionId, chip, q, sort, fTags, fStatus, fDecks },
         now,
       ),
     [
@@ -111,7 +112,7 @@ export default function BrowseScreen() {
       chip,
       q,
       sort,
-      fLevels,
+      fTags,
       fStatus,
       fDecks,
       now,
@@ -136,7 +137,7 @@ export default function BrowseScreen() {
   };
 
   const filtersActive =
-    q !== '' || chip !== 'all' || fLevels.length > 0 || fStatus.length > 0 || fDecks.length > 0;
+    q !== '' || chip !== 'all' || fTags.length > 0 || fStatus.length > 0 || fDecks.length > 0;
 
   const toggleIn = <T,>(arr: T[], v: T): T[] =>
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
@@ -181,7 +182,7 @@ export default function BrowseScreen() {
                 numberOfLines={1}
                 style={[font('serif', 600), { fontSize: 17.5, color: c.ink, flexShrink: 1 }]}
               >
-                {item.word}
+                {item.front}
               </Text>
               <StateDot state={s} />
             </View>
@@ -189,10 +190,9 @@ export default function BrowseScreen() {
               numberOfLines={1}
               style={[font('sans', 400), { fontSize: 13, color: c.ink2, marginTop: 1 }]}
             >
-              {item.tr}
+              {item.back}
             </Text>
           </View>
-          {item.level != null && <LevelBadge level={item.level} />}
           {item.fav ? (
             <Ion name="heart" size={16} color={c.danger} />
           ) : item.intervalDays > 0 && item.stepIndex === null ? (
@@ -253,7 +253,7 @@ export default function BrowseScreen() {
         <TextInput
           value={q}
           onChangeText={setQ}
-          placeholder="Search words, meanings, examples…"
+          placeholder="Search front, back, notes…"
           placeholderTextColor={c.ink3}
           autoCorrect={false}
           style={[font('sans', 400), { flex: 1, fontSize: 14.5, color: c.ink, padding: 0 }]}
@@ -266,17 +266,12 @@ export default function BrowseScreen() {
       </View>
       <Text style={[font('mono', 400), { fontSize: 11.5, color: c.ink3, marginTop: 8, marginHorizontal: 2 }]}>
         try{' '}
-        {hasLevel && (
+        {hasTags && (
           <>
-            <Text style={{ color: c.pine }}>level:B1</Text> ·{' '}
+            <Text style={{ color: c.pine }}>tag:{allTags[0]}</Text> ·{' '}
           </>
         )}
-        {hasType && (
-          <>
-            <Text style={{ color: c.pine }}>type:verb</Text> ·{' '}
-          </>
-        )}
-        <Text style={{ color: c.pine }}>{'deck:"Spanish"'}</Text>
+        <Text style={{ color: c.pine }}>{`deck:"${state.decks[0]?.name ?? '…'}"`}</Text>
       </Text>
 
       {/* scope chips */}
@@ -295,7 +290,7 @@ export default function BrowseScreen() {
         </Chip>
         <Chip
           icon="options-outline"
-          active={fLevels.length + fStatus.length + fDecks.length > 0}
+          active={fTags.length + fStatus.length + fDecks.length > 0}
           onPress={() => setFilterOpen(true)}
         >
           Filters
@@ -340,7 +335,7 @@ export default function BrowseScreen() {
         ]}
       >
         {state.cards.length === 0
-          ? 'Add a curated deck, or import your own, to get started.'
+          ? 'Add a deck, or import your own, to get started.'
           : 'Your cards are still here — the current search and filters exclude them.'}
       </Text>
       {state.cards.length === 0 ? (
@@ -356,7 +351,7 @@ export default function BrowseScreen() {
           onPress={() => {
             setQ('');
             setChip('all');
-            setFLevels([]);
+            setFTags([]);
             setFStatus([]);
             setFDecks([]);
           }}
@@ -453,21 +448,21 @@ export default function BrowseScreen() {
       )}
 
       <CardPeek card={peek} onClose={() => setPeek(null)} />
-      <AddDeckSheet open={createOpen} onClose={() => setCreateOpen(false)} scope="curated" />
+      <AddDeckSheet open={createOpen} onClose={() => setCreateOpen(false)} />
 
       {/* filter sheet — chips hold real state */}
       <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Filters">
-        {hasLevel && (
+        {hasTags && (
           <>
-            <Overline style={{ marginBottom: 8 }}>Level</Overline>
+            <Overline style={{ marginBottom: 8 }}>Tags</Overline>
             <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
-              {LEVELS.map((l) => (
+              {allTags.map((t) => (
                 <Chip
-                  key={l}
-                  active={fLevels.includes(l)}
-                  onPress={() => setFLevels(toggleIn(fLevels, l))}
+                  key={t}
+                  active={fTags.includes(t)}
+                  onPress={() => setFTags(toggleIn(fTags, t))}
                 >
-                  {l}
+                  {t}
                 </Chip>
               ))}
             </View>
@@ -489,7 +484,7 @@ export default function BrowseScreen() {
               active={fDecks.includes(d.id)}
               onPress={() => setFDecks(toggleIn(fDecks, d.id))}
             >
-              {`${d.flag} ${d.name}`}
+              {`${d.icon} ${d.name}`}
             </Chip>
           ))}
         </View>

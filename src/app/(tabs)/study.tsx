@@ -153,7 +153,7 @@ export default function StudyScreen() {
                 padV={14}
                 last={i === active.length - 1 && !paused.length}
               >
-                <DeckTile flag={d.flag} size={36} builtin={d.builtin} />
+                <DeckTile icon={d.icon} size={36} builtin={d.builtin} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                     <Text
@@ -221,7 +221,7 @@ export default function StudyScreen() {
                       last={i === paused.length - 1}
                       style={{ opacity: 0.75 }}
                     >
-                      <DeckTile flag={d.flag} size={34} builtin={d.builtin} />
+                      <DeckTile icon={d.icon} size={34} builtin={d.builtin} />
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                           <Text
@@ -316,7 +316,7 @@ export default function StudyScreen() {
 
       <FAB onPress={() => setCreateOpen(true)} bottom={TABBAR_HEIGHT + insets.bottom + 18} />
       <PeekSheet target={peek} onClose={() => setPeek(null)} />
-      <AddDeckSheet open={createOpen} onClose={() => setCreateOpen(false)} scope="all" />
+      <AddDeckSheet open={createOpen} onClose={() => setCreateOpen(false)} />
     </>
   );
 }

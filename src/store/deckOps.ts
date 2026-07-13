@@ -23,9 +23,7 @@ export function unfiledDeck(now: number): Deck {
   return {
     id: UNFILED_DECK_ID,
     name: 'Unfiled cards',
-    flag: '🗃️',
-    lang: '',
-    level: null,
+    icon: '🗃️',
     builtin: false,
     active: true,
     createdAt: now,

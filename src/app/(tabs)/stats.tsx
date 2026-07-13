@@ -2,7 +2,7 @@
  * Progress (Stats) — progression that drives action (C1 + C5).
  * Level + XP ribbon, streak & mastery heroes, actionable launchers
  * (due → study, weak cards → a real "hardest" session), an honest activity
- * heatmap from session history, mastery by CEFR level, the achievements
+ * heatmap from session history, mastery by deck, the achievements
  * wall, and the quiet all-time ledger. Every number derives from the store.
  */
 import { useRouter } from 'expo-router';
@@ -15,7 +15,6 @@ import {
   CardBox,
   IconBtn,
   Ion,
-  LevelBadge,
   Overline,
   Page,
   Ring,
@@ -27,14 +26,12 @@ import {
 } from '@/components/ui';
 import { levelInfo } from '@/domain/gamification';
 import { activeCardPool, buildQueue, computeReady } from '@/domain/queue';
-import { addDays, CefrLevel, dayKeyOf, isDue } from '@/domain/types';
+import { addDays, dayKeyOf, isDue } from '@/domain/types';
 import { normalizedDayDone, useAchievements, useData } from '@/store/DataContext';
 import { useNow } from '@/store/useNow';
 import { useSnackbar } from '@/store/SnackbarContext';
 import { font, tnum } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
-
-const LEVELS: CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 function HeatCell({ v }: { v: number }) {
   const c = useColors();
@@ -136,13 +133,23 @@ export default function StatsScreen() {
       else strip.push('m');
     }
 
-    // mastery by CEFR level (only levels present)
-    const byLevel = LEVELS.map((l) => {
-      // null-level (imported) cards never equal a CEFR level, so they're intentionally excluded
-      const pool = state.cards.filter((x) => x.level === l);
-      const m = pool.filter((x) => x.reps > 0 && x.stepIndex === null && x.intervalDays >= 21).length;
-      return { level: l, count: pool.length, pct: pool.length ? Math.round((m / pool.length) * 100) : 0 };
-    }).filter((x) => x.count > 0);
+    // mastery by deck (active decks that hold at least one card)
+    const byDeck = state.decks
+      .filter((d) => d.active)
+      .map((d) => {
+        const pool = state.cards.filter((x) => x.deckId === d.id);
+        const m = pool.filter(
+          (x) => x.reps > 0 && x.stepIndex === null && x.intervalDays >= 21,
+        ).length;
+        return {
+          id: d.id,
+          name: d.name,
+          icon: d.icon,
+          count: pool.length,
+          pct: pool.length ? Math.round((m / pool.length) * 100) : 0,
+        };
+      })
+      .filter((x) => x.count > 0);
 
     const totalReviews = state.sessions.reduce((s, x) => s + x.total, 0);
     const daysActive = new Set(state.sessions.map((x) => x.dayKey)).size;
@@ -158,7 +165,7 @@ export default function StatsScreen() {
       heat5w,
       heatYear,
       strip,
-      byLevel,
+      byDeck,
       totalReviews,
       daysActive,
     };
@@ -380,26 +387,32 @@ export default function StatsScreen() {
         <Text style={[font('sans', 400), { fontSize: 11.5, color: c.ink3 }]}>today</Text>
       </View>
 
-      {/* by level */}
-      {derived.byLevel.length > 0 && (
+      {/* by deck */}
+      {derived.byDeck.length > 0 && (
         <>
-          <SectionHead>By level</SectionHead>
-          <View style={{ gap: 11, paddingTop: 8, paddingBottom: 2 }}>
-            {derived.byLevel.map(({ level: l, pct }) => (
-              <View key={l} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <LevelBadge level={l} />
-                <View style={{ flex: 1 }}>
-                  <Bar value={pct} color={c.cefr[l].fg} />
+          <SectionHead>By deck</SectionHead>
+          <View style={{ gap: 12, paddingTop: 8, paddingBottom: 2 }}>
+            {derived.byDeck.map(({ id, name, icon, pct }) => (
+              <View key={id} style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 15 }}>{icon}</Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[font('sans', 700), { flex: 1, fontSize: 13, color: c.ink2 }]}
+                  >
+                    {name}
+                  </Text>
+                  <Text
+                    style={[
+                      font('mono', 400),
+                      tnum,
+                      { fontSize: 12, color: c.ink3, width: 34, textAlign: 'right' },
+                    ]}
+                  >
+                    {pct}%
+                  </Text>
                 </View>
-                <Text
-                  style={[
-                    font('mono', 400),
-                    tnum,
-                    { fontSize: 12, color: c.ink3, width: 34, textAlign: 'right' },
-                  ]}
-                >
-                  {pct}%
-                </Text>
+                <Bar value={pct} color={c.pine} />
               </View>
             ))}
           </View>

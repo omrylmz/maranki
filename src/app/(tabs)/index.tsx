@@ -20,7 +20,6 @@ import {
   DeckTile,
   IconBtn,
   Ion,
-  LevelBadge,
   Overline,
   Page,
   Row,
@@ -160,7 +159,7 @@ export default function HomeScreen() {
           </Text>
           <Text style={[font('sans', 400), tnum, { fontSize: 15, color: c.ink2, marginTop: 7 }]}>
             {noDecks
-              ? 'Add a deck to begin — pick a language or import your own.'
+              ? 'Add a deck to begin — create your own or import.'
               : ready.total > 0
                 ? `${ready.total} cards ready · about ${ready.mins} min`
                 : 'You’re all caught up. Come back tomorrow — or study ahead.'}
@@ -213,8 +212,7 @@ export default function HomeScreen() {
                 },
               ]}
             >
-              Pick a language from the curated catalog, or import your own — your words land right
-              here.
+              Create a deck of your own, or import from a file — your cards land right here.
             </Text>
             <Btn icon="add" onPress={() => setAddOpen(true)}>
               Add your first deck
@@ -277,7 +275,6 @@ export default function HomeScreen() {
                   }}
                 >
                   <Overline style={{ letterSpacing: 11 * 0.11 }}>Up first</Overline>
-                  {first.level != null && <LevelBadge level={first.level} />}
                 </View>
                 <Text
                   numberOfLines={2}
@@ -296,21 +293,9 @@ export default function HomeScreen() {
                     },
                   ]}
                 >
-                  {first.word}
+                  {first.front}
                 </Text>
-                {first.ipa ? (
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      font('mono', 400),
-                      { fontSize: 13, color: c.ink3, textAlign: 'center', marginBottom: 18 },
-                    ]}
-                  >
-                    {first.ipa}
-                  </Text>
-                ) : (
-                  <View style={{ marginBottom: 18 }} />
-                )}
+                <View style={{ marginBottom: 18 }} />
                 <View
                   style={{
                     flexDirection: 'row',
@@ -460,7 +445,7 @@ export default function HomeScreen() {
                 last={i === activeDecks.length - 1}
                 padV={15}
               >
-                <DeckTile flag={d.flag} builtin={d.builtin} />
+                <DeckTile icon={d.icon} builtin={d.builtin} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                     <Text
@@ -538,7 +523,7 @@ export default function HomeScreen() {
 
       <PeekSheet target={peek} onClose={() => setPeek(null)} />
       <StreakSheet open={streakOpen} onClose={() => setStreakOpen(false)} />
-      <AddDeckSheet open={addOpen} onClose={() => setAddOpen(false)} scope="all" />
+      <AddDeckSheet open={addOpen} onClose={() => setAddOpen(false)} />
     </>
   );
 }

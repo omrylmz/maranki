@@ -9,28 +9,23 @@
  */
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {
-  Bar,
-  Btn,
-  IconBtn,
-  Ion,
-  LevelBadge,
-  ListRow,
-  Pill,
-  TypePill,
-  RiseIn,
-  Sheet,
-  SnackbarView,
-} from '@/components/ui';
+import { CardActionsSheet } from '@/components/study/CardActionsSheet';
+import { EmptyQueue } from '@/components/study/EmptyQueue';
+import { ExitConfirmSheet } from '@/components/study/ExitConfirmSheet';
+import { MilestoneToast } from '@/components/study/MilestoneToast';
+import { RatingButtons } from '@/components/study/RatingButtons';
+import { SessionHeader } from '@/components/study/SessionHeader';
+import { StudyCard } from '@/components/study/StudyCard';
+import { Ion, RiseIn, SnackbarView } from '@/components/ui';
 import { buildQueue } from '@/domain/queue';
-import { speakWord } from '@/domain/speech';
+import { speak } from '@/domain/speech';
 import { applyRating, predictAll, stepLabel } from '@/domain/srs';
 import { Card, dayKeyOf, Rating, SessionKind } from '@/domain/types';
 import { normalizedDayDone, useData } from '@/store/DataContext';
-import { font, tnum } from '@/theme/tokens';
+import { font } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
 
 interface QueueCard extends Card {
@@ -59,43 +54,6 @@ const RATING_LABELS: Record<Rating, string> = {
   good: 'Good',
   easy: 'Easy',
 };
-
-function RatingBtn({
-  label,
-  interval,
-  fg,
-  tint,
-  onPress,
-}: {
-  label: string;
-  interval: string;
-  fg: string;
-  tint: string;
-  onPress: () => void;
-}) {
-  const c = useColors();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        alignItems: 'center',
-        gap: 3,
-        backgroundColor: tint,
-        borderWidth: 1,
-        borderColor: fg + '47', // ≈28% — softTint(color, 28) in the mock
-        borderRadius: 14,
-        paddingTop: 12,
-        paddingBottom: 10,
-        paddingHorizontal: 4,
-        transform: [{ scale: pressed ? 0.96 : 1 }],
-      })}
-    >
-      <Text style={[font('sans', 800), { fontSize: 14.5, color: fg }]}>{label}</Text>
-      <Text style={[font('mono', 400), { fontSize: 11.5, color: c.ink3 }]}>{interval}</Text>
-    </Pressable>
-  );
-}
 
 export default function SessionScreen() {
   const c = useColors();
@@ -229,8 +187,6 @@ export default function SessionScreen() {
     if (revealed) return;
     setRevealed(true);
     revealedAt.current = Date.now();
-    // Speak the word automatically when the answer is revealed, if enabled (L8).
-    if (card && state.settings.autoPlayAudio) speakWord(card.word, card.lang);
   };
 
   const finish = (
@@ -289,7 +245,7 @@ export default function SessionScreen() {
     setSnack({
       text:
         r === 'again'
-          ? `${card.base} is coming back soon in this session`
+          ? `${card.front} is coming back soon in this session`
           : `Rated ${RATING_LABELS[r]} · next in ${pred[r]}`,
       undo: true,
     });
@@ -300,8 +256,8 @@ export default function SessionScreen() {
     setRevealed(false);
 
     if (idx + 1 >= nextQueue.length) {
-      // Pass the freshly-rated card so end-of-session mastery/language
-      // achievements score against true final state (cram doesn't reschedule).
+      // Pass the freshly-rated card so end-of-session mastery achievements score
+      // against true final state (cram doesn't reschedule).
       const finalCard = writesSchedule
         ? applyRating(card, r, state.settings.srs, Date.now())
         : undefined;
@@ -392,7 +348,7 @@ export default function SessionScreen() {
     setMoreOpen(false);
     actions.buryCard(card.id);
     const nextQueue = queue.filter((q, i) => !(i >= idx && q.id === card.id));
-    setSnack({ text: `${card.base} buried until tomorrow`, undo: false });
+    setSnack({ text: `${card.front} buried until tomorrow`, undo: false });
     if (idx >= nextQueue.length) {
       if (reviewed > 0) finish(counts, reviewed, bestRun);
       else router.back();
@@ -404,262 +360,34 @@ export default function SessionScreen() {
 
   /* ——— empty queue: nothing to study ——— */
   if (!card) {
-    return (
-      <View style={{ flex: 1, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Ion name="checkmark-circle" size={48} color={c.success} />
-        <Text style={[font('serif', 600), { fontSize: 24, color: c.ink, marginTop: 14, textAlign: 'center' }]}>
-          Nothing to study here.
-        </Text>
-        <Text style={[font('sans', 400), { fontSize: 14, color: c.ink2, marginTop: 6, marginBottom: 20, textAlign: 'center' }]}>
-          You’re all caught up. Come back tomorrow — or study ahead.
-        </Text>
-        <Btn onPress={() => router.back()}>Back</Btn>
-      </View>
-    );
+    return <EmptyQueue onBack={() => router.back()} />;
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: c.paper }}>
       {/* ——— header ——— */}
-      <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <IconBtn
-            icon="close"
-            size={36}
-            iconSize={20}
-            color={c.ink2}
-            onPress={() => (reviewed > 0 ? setConfirmExit(true) : router.back())}
-          />
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={[font('mono', 400), tnum, { fontSize: 13.5, color: c.ink2 }]}>
-              {idx + 1} <Text style={{ color: c.ink3 }}>/ {total}</Text>
-            </Text>
-          </View>
-          <IconBtn
-            icon="arrow-undo"
-            size={36}
-            iconSize={18}
-            disabled={!history.length}
-            onPress={undo}
-            color={c.ink2}
-          />
-          <IconBtn
-            icon="ellipsis-horizontal"
-            size={36}
-            iconSize={18}
-            onPress={() => setMoreOpen(true)}
-            color={c.ink2}
-          />
-        </View>
-        <View style={{ marginTop: 8, marginHorizontal: 2 }}>
-          <Bar value={(idx / total) * 100} h={3} />
-        </View>
-      </View>
+      <SessionHeader
+        idx={idx}
+        total={total}
+        canUndo={history.length > 0}
+        onClose={() => (reviewed > 0 ? setConfirmExit(true) : router.back())}
+        onUndo={undo}
+        onMore={() => setMoreOpen(true)}
+      />
 
       {/* ——— the card ——— */}
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 22, paddingVertical: 12 }}>
-        {milestone && (
-          <View style={{ position: 'absolute', top: 6, left: 0, right: 0, alignItems: 'center', zIndex: 5 }}>
-            <RiseIn kind="pop" duration={300}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  backgroundColor: c.amberTint,
-                  paddingVertical: 7,
-                  paddingHorizontal: 14,
-                  borderRadius: 999,
-                }}
-              >
-                <Ion name="flame" size={15} color={c.amber} />
-                <Text style={[font('sans', 800), { fontSize: 13.5, color: c.amberDeep }]}>
-                  {milestone} in a row
-                </Text>
-              </View>
-            </RiseIn>
-          </View>
-        )}
-
-        <View>
-          {/* queue stack beneath */}
-          <View
-            style={{
-              position: 'absolute',
-              left: 14,
-              right: 14,
-              bottom: -10,
-              height: 30,
-              backgroundColor: c.card,
-              borderWidth: 1,
-              borderColor: c.hairline,
-              borderRadius: 18,
-              opacity: 0.55,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              left: 7,
-              right: 7,
-              bottom: -5,
-              height: 30,
-              backgroundColor: c.card,
-              borderWidth: 1,
-              borderColor: c.hairline,
-              borderRadius: 18,
-              opacity: 0.8,
-            }}
-          />
-
-          <RiseIn key={`${card.id}-${idx}`} duration={280}>
-            <Pressable
-              onPress={reveal}
-              style={[
-                {
-                  backgroundColor: c.card,
-                  borderWidth: 1,
-                  borderColor: c.hairline,
-                  borderRadius: 20,
-                  minHeight: 330,
-                  paddingTop: 18,
-                  paddingHorizontal: 22,
-                  paddingBottom: 20,
-                },
-                c.shadow.card,
-              ]}
-            >
-              {/* card top row */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {card.level != null && <LevelBadge level={card.level} />}
-                {step ? (
-                  <Pill mono fg={c.amberDeep} bg={c.amberTint}>
-                    step {step}
-                  </Pill>
-                ) : null}
-                {card.requeued ? (
-                  <Pill fg={c.danger} bg={c.dangerTint}>
-                    again
-                  </Pill>
-                ) : null}
-                <View style={{ flex: 1 }} />
-                <IconBtn
-                  icon="volume-high-outline"
-                  size={34}
-                  iconSize={18}
-                  color={c.pine}
-                  bg={c.pineTint}
-                  onPress={() => speakWord(card.word, card.lang)}
-                />
-              </View>
-
-              {!revealed ? (
-                /* front — the word */
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  {card.article ? (
-                    <Text
-                      style={[font('serif', 400, true), { fontSize: 21, color: c.amberDeep, marginBottom: 2 }]}
-                    >
-                      {card.article}
-                    </Text>
-                  ) : null}
-                  <Text
-                    // single long words (German compounds) scale to fit
-                    // rather than breaking mid-word; phrases wrap on spaces
-                    numberOfLines={card.base.includes(' ') ? undefined : 1}
-                    adjustsFontSizeToFit={!card.base.includes(' ')}
-                    minimumFontScale={0.55}
-                    style={[
-                      font('serif', 600),
-                      {
-                        fontSize: 42,
-                        lineHeight: 44,
-                        letterSpacing: -0.63,
-                        color: c.ink,
-                        textAlign: 'center',
-                      },
-                    ]}
-                  >
-                    {card.base}
-                  </Text>
-                  {card.ipa ? (
-                    <Text
-                      numberOfLines={1}
-                      style={[font('mono', 400), { fontSize: 14, color: c.ink3, marginTop: 10 }]}
-                    >
-                      {card.ipa}
-                    </Text>
-                  ) : null}
-                  <View
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 34 }}
-                  >
-                    <Ion name="hand-left-outline" size={14} color={c.ink3} />
-                    <Text style={[font('sans', 700), { fontSize: 12.5, color: c.ink3 }]}>
-                      Tap to reveal
-                    </Text>
-                  </View>
-                </View>
-              ) : (
-                /* back — the answer */
-                <RiseIn duration={220} distance={0} style={{ flex: 1 }}>
-                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={[font('sans', 700), { fontSize: 14.5, color: c.ink3 }]}>
-                      {card.word}
-                    </Text>
-                    <View
-                      style={{ width: 36, height: 1, backgroundColor: c.hairlineStrong, marginVertical: 13 }}
-                    />
-                    <Text
-                      style={[
-                        font('serif', 600),
-                        {
-                          fontSize: 31,
-                          lineHeight: 35,
-                          letterSpacing: -0.47,
-                          color: c.ink,
-                          textAlign: 'center',
-                        },
-                      ]}
-                    >
-                      {card.tr}
-                    </Text>
-                    {card.ex ? (
-                      <Text
-                        style={[
-                          font('serif', 400, true),
-                          {
-                            fontSize: 16.5,
-                            lineHeight: 24,
-                            color: c.ink2,
-                            textAlign: 'center',
-                            marginTop: 18,
-                          },
-                        ]}
-                      >
-                        {card.ex}
-                      </Text>
-                    ) : null}
-                    {card.exTr ? (
-                      <Text
-                        style={[
-                          font('sans', 400),
-                          { fontSize: 13, color: c.ink3, textAlign: 'center', marginTop: 4 },
-                        ]}
-                      >
-                        {card.exTr}
-                      </Text>
-                    ) : null}
-                    {card.type != null ? (
-                      <View style={{ marginTop: 16 }}>
-                        <TypePill type={card.type} />
-                      </View>
-                    ) : null}
-                  </View>
-                </RiseIn>
-              )}
-            </Pressable>
-          </RiseIn>
-        </View>
+        {milestone && <MilestoneToast n={milestone} />}
+        <StudyCard
+          key={`${card.id}-${idx}`}
+          card={card}
+          revealed={revealed}
+          step={step}
+          requeued={card.requeued}
+          canSpeak={state.settings.readAloudEnabled}
+          onReveal={reveal}
+          onSpeak={() => speak(revealed ? card.back : card.front)}
+        />
       </View>
 
       {/* ——— rating zone (stable height) ——— */}
@@ -672,36 +400,7 @@ export default function SessionScreen() {
       >
         {revealed && pred ? (
           <RiseIn duration={200}>
-            <View style={{ flexDirection: 'row', gap: 9 }}>
-              <RatingBtn
-                label="Again"
-                interval={pred.again}
-                fg={c.rate.again.fg}
-                tint={c.rate.again.tint}
-                onPress={() => rate('again')}
-              />
-              <RatingBtn
-                label="Hard"
-                interval={pred.hard}
-                fg={c.rate.hard.fg}
-                tint={c.rate.hard.tint}
-                onPress={() => rate('hard')}
-              />
-              <RatingBtn
-                label="Good"
-                interval={pred.good}
-                fg={c.rate.good.fg}
-                tint={c.rate.good.tint}
-                onPress={() => rate('good')}
-              />
-              <RatingBtn
-                label="Easy"
-                interval={pred.easy}
-                fg={c.rate.easy.fg}
-                tint={c.rate.easy.tint}
-                onPress={() => rate('easy')}
-              />
-            </View>
+            <RatingButtons pred={pred} onRate={rate} />
           </RiseIn>
         ) : (
           <View
@@ -734,67 +433,29 @@ export default function SessionScreen() {
       )}
 
       {/* per-card actions */}
-      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={card.base}>
-        <ListRow
-          icon="repeat"
-          title="Reschedule"
-          sub="Set when you'll see this next · difficulty unchanged"
-          onPress={() => {
-            setMoreOpen(false);
-            setSnack({ text: 'Reschedule — pick the next review date', undo: false });
-          }}
-        />
-        <ListRow
-          icon="eye-off-outline"
-          title="Bury for now"
-          sub="Skip today without changing its schedule"
-          onPress={bury}
-        />
-        <ListRow
-          icon={card.flagged ? 'flag' : 'flag-outline'}
-          title={card.flagged ? 'Unflag' : 'Flag'}
-          sub="Bookmark for later — no effect on scheduling"
-          onPress={() => {
-            setMoreOpen(false);
-            actions.setCardProps([card.id], { flagged: !card.flagged });
-            setSnack({ text: `${card.base} ${card.flagged ? 'unflagged' : 'flagged'}`, undo: false });
-          }}
-        />
-        <ListRow
-          icon="swap-horizontal"
-          title="Switch mode"
-          sub="Flashcard · typing · multiple choice"
-          onPress={() => {
-            setMoreOpen(false);
-            setSnack({ text: 'Mode switch — flashcard · typing · quiz', undo: false });
-          }}
-          last
-        />
-      </Sheet>
+      <CardActionsSheet
+        card={card}
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        onBury={bury}
+        onFlag={() => {
+          setMoreOpen(false);
+          actions.setCardProps([card.id], { flagged: !card.flagged });
+          setSnack({ text: `${card.front} ${card.flagged ? 'unflagged' : 'flagged'}`, undo: false });
+        }}
+        onSnack={(text) => setSnack({ text, undo: false })}
+      />
 
       {/* exit confirm */}
-      <Sheet open={confirmExit} onClose={() => setConfirmExit(false)} title="End this session?">
-        <Text
-          style={[font('sans', 400), { fontSize: 14.5, lineHeight: 22, color: c.ink2, marginBottom: 18 }]}
-        >
-          The {reviewed} {reviewed === 1 ? 'card' : 'cards'} you reviewed will be saved.
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Btn kind="secondary" full style={{ flex: 1 }} onPress={() => setConfirmExit(false)}>
-            Keep studying
-          </Btn>
-          <Btn
-            full
-            style={{ flex: 1 }}
-            onPress={() => {
-              setConfirmExit(false);
-              exitNow();
-            }}
-          >
-            End session
-          </Btn>
-        </View>
-      </Sheet>
+      <ExitConfirmSheet
+        open={confirmExit}
+        reviewed={reviewed}
+        onKeep={() => setConfirmExit(false)}
+        onEnd={() => {
+          setConfirmExit(false);
+          exitNow();
+        }}
+      />
     </View>
   );
 }

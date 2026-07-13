@@ -142,7 +142,7 @@ export function PeekSheet({ target: targetProp, onClose }: PeekSheetProps) {
             <Ion name={target.collection.icon} size={20} color={c.pine} />
           </View>
         ) : (
-          <DeckTile flag={target.deck.flag} size={44} builtin={target.deck.builtin} ring={c.surface} />
+          <DeckTile icon={target.deck.icon} size={44} builtin={target.deck.builtin} ring={c.surface} />
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[font('serif', 600), { fontSize: 21, color: c.ink, lineHeight: 24 }]}>

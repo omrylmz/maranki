@@ -2,14 +2,13 @@
  * Pure card-filtering pipeline for the Library (Browse) screen, lifted out of
  * browse.tsx so the search → filter → sort logic is unit-testable without React.
  *
- * Level/type are gated PER CARD on the nullable Card.level / Card.type rather
- * than on deck provenance: a card opts into level/type filtering (and its
- * badge) only when it actually carries that metadata. Imports leave these
- * null, so they drop out of level/type filters automatically — and a CSV with
- * real Level/Type columns now participates (the old deck-`builtin` gate hid it).
+ * Tags are freeform, per-card metadata: a card participates in a tag filter (or
+ * the `tag:` search token) only when it actually carries that tag, so cards
+ * without tags simply drop out of tag filters. Free-text search spans front,
+ * back, example, notes and tags.
  */
 import { collectionFilter } from './queue';
-import { Card, CardState, CefrLevel, Collection, Deck, displayState } from './types';
+import { Card, CardState, Collection, Deck, displayState } from './types';
 
 export type ChipScope = 'all' | 'due' | 'new' | 'fav';
 export type SortMode = 'smart' | 'az' | 'newest' | 'hardest';
@@ -26,12 +25,11 @@ export type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 export interface ParsedQuery {
   text: string;
-  level?: string;
-  type?: string;
+  tag?: string;
   deck?: string;
 }
 
-/** Parse `level:B1 type:verb deck:"Spanish — Travel"` tokens from a query. */
+/** Parse `tag:verb deck:"My Deck"` tokens from a query. */
 export function parseQuery(q: string): ParsedQuery {
   let text = q;
   const grab = (key: string): string | undefined => {
@@ -41,10 +39,9 @@ export function parseQuery(q: string): ParsedQuery {
     text = text.replace(m[0], '').trim();
     return (m[1] ?? m[2]).toLowerCase();
   };
-  const level = grab('level');
-  const type = grab('type');
+  const tag = grab('tag');
   const deck = grab('deck');
-  return { text: text.trim().toLowerCase(), level, type, deck };
+  return { text: text.trim().toLowerCase(), tag, deck };
 }
 
 const STATE_PRIORITY: Record<CardState, number> = {
@@ -59,10 +56,10 @@ export interface BrowseFilterOpts {
   /** Optional saved-collection scope (matched against `collections`). */
   collectionId?: string;
   chip: ChipScope;
-  /** Raw search box text, including any `level:`/`type:`/`deck:` tokens. */
+  /** Raw search box text, including any `tag:`/`deck:` tokens. */
   q: string;
   sort: SortMode;
-  fLevels: CefrLevel[];
+  fTags: string[];
   fStatus: StatusFilter[];
   fDecks: string[];
 }
@@ -79,7 +76,7 @@ export function filterBrowseCards(
   opts: BrowseFilterOpts,
   now: number,
 ): Card[] {
-  const { collectionId, chip, q, sort, fLevels, fStatus, fDecks } = opts;
+  const { collectionId, chip, q, sort, fTags, fStatus, fDecks } = opts;
 
   let pool = cards;
   if (collectionId) {
@@ -97,7 +94,7 @@ export function filterBrowseCards(
   if (chip === 'new') pool = pool.filter((x) => x.reps === 0);
   if (chip === 'fav') pool = pool.filter((x) => x.fav);
 
-  if (fLevels.length) pool = pool.filter((x) => x.level != null && fLevels.includes(x.level));
+  if (fTags.length) pool = pool.filter((x) => !!x.tags && x.tags.some((t) => fTags.includes(t)));
   if (fDecks.length) pool = pool.filter((x) => fDecks.includes(x.deckId));
   if (fStatus.length) {
     pool = pool.filter((x) => {
@@ -111,10 +108,8 @@ export function filterBrowseCards(
   }
 
   const parsed = parseQuery(q);
-  if (parsed.level)
-    pool = pool.filter((x) => x.level != null && x.level.toLowerCase() === parsed.level);
-  if (parsed.type)
-    pool = pool.filter((x) => x.type != null && x.type.toLowerCase() === parsed.type);
+  if (parsed.tag)
+    pool = pool.filter((x) => !!x.tags && x.tags.some((t) => t.toLowerCase() === parsed.tag));
   if (parsed.deck) {
     pool = pool.filter((x) => {
       const deck = decks.find((d) => d.id === x.deckId);
@@ -125,16 +120,18 @@ export function filterBrowseCards(
     const s = parsed.text;
     pool = pool.filter(
       (x) =>
-        x.word.toLowerCase().includes(s) ||
-        x.tr.toLowerCase().includes(s) ||
-        (x.ex ?? '').toLowerCase().includes(s),
+        x.front.toLowerCase().includes(s) ||
+        x.back.toLowerCase().includes(s) ||
+        (x.example ?? '').toLowerCase().includes(s) ||
+        (x.notes ?? '').toLowerCase().includes(s) ||
+        (x.tags ?? []).some((t) => t.toLowerCase().includes(s)),
     );
   }
 
   const sorted = [...pool];
   switch (sort) {
     case 'az':
-      sorted.sort((a, b) => a.base.localeCompare(b.base));
+      sorted.sort((a, b) => a.front.localeCompare(b.front));
       break;
     case 'newest':
       sorted.sort((a, b) => b.createdAt - a.createdAt);

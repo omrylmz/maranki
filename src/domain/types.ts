@@ -6,44 +6,20 @@
 
 export type Rating = 'again' | 'hard' | 'good' | 'easy';
 
-export type CefrLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
-
-export type Lang = 'de' | 'es' | 'fr';
-
-export type WordType =
-  | 'noun'
-  | 'verb'
-  | 'adjective'
-  | 'adverb'
-  | 'phrase'
-  | 'preposition'
-  | 'pronoun'
-  | 'conjunction';
-
 /** Lifecycle: new → learning → review (graduated) → mastered (interval ≥ 21d). */
 export type CardState = 'new' | 'learning' | 'review' | 'mastered' | 'due';
 
 export interface Card {
   id: string;
   deckId: string;
-  /** Full display form, e.g. "die Stunde". */
-  word: string;
-  /** Gender/article de-emphasised on the flashcard, e.g. "die". */
-  article: string | null;
-  /** The bare word, e.g. "Stunde". */
-  base: string;
-  /** Translation. */
-  tr: string;
-  ipa?: string;
-  /** Example sentence in the target language. */
-  ex?: string;
-  /** Example translation. */
-  exTr?: string;
-  /** CEFR level, or null when the source carries no such metadata (e.g. an import). */
-  level: CefrLevel | null;
-  /** Part of speech, or null when the source carries no such metadata (e.g. an import). */
-  type: WordType | null;
-  lang: Lang;
+  /** The prompt shown on the front face. */
+  front: string;
+  /** The answer shown on the back face. */
+  back: string;
+  /** Optional example sentence. */
+  example?: string;
+  /** Optional freeform notes. */
+  notes?: string;
   tags?: string[];
   fav?: boolean;
   flagged?: boolean;
@@ -69,10 +45,8 @@ export interface Card {
 export interface Deck {
   id: string;
   name: string;
-  /** Flag emoji — data, not iconography (see design README). */
-  flag: string;
-  lang: string;
-  level: CefrLevel | null;
+  /** Emoji shown on the deck tile — data, not iconography (see design README). */
+  icon: string;
   desc?: string;
   builtin: boolean;
   active: boolean;
@@ -197,11 +171,8 @@ export interface Person {
 
 export interface AppSettings {
   srs: SrsSettings;
-  ttsEnabled: boolean;
-  /** Speak the word automatically when the answer is revealed. */
-  autoPlayAudio: boolean;
-  /** Prompt pronunciation practice on hard cards (C4). */
-  pronunciationPrompt: boolean;
+  /** Show a read-aloud button that speaks the card text on demand. */
+  readAloudEnabled: boolean;
   hapticsEnabled: boolean;
   reminderEnabled: boolean;
   reminderTime: string;
@@ -214,9 +185,7 @@ export interface AppSettings {
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   srs: DEFAULT_SRS,
-  ttsEnabled: true,
-  autoPlayAudio: false,
-  pronunciationPrompt: true,
+  readAloudEnabled: true,
   hapticsEnabled: true,
   reminderEnabled: true,
   reminderTime: '21:00',
