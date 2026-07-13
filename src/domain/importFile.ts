@@ -18,6 +18,7 @@
  * CSV column contract promised by the import UI (positional):
  *   0 Word · 1 Translation · 2 Example · 3 Level · 4 Type · 5 Pronunciation · 6 Tags
  */
+import type { ImportSection } from './anki';
 import { ImportCardPayload } from './importSamples';
 import { CefrLevel, WordType } from './types';
 import { splitArticle } from './words';
@@ -35,6 +36,13 @@ export interface ParsedImport {
    * the language even when the deck name carries no hint (H6). Absent ⇒ no header.
    */
   fieldNames?: string[];
+  /**
+   * Selectable subdecks when an .apkg holds MORE THAN ONE deck (German::Verbs::B1
+   * …), letting the UI offer "import just this subdeck". Set only when there is a
+   * real choice (>1 section); a single-deck package leaves this undefined so the
+   * flat import flow is unchanged. (CSV never sets it.)
+   */
+  sections?: ImportSection[];
 }
 
 const CEFR_LEVELS: readonly CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];

@@ -16,7 +16,14 @@
 import { deserializeDatabaseAsync } from 'expo-sqlite';
 import { unzipSync } from 'fflate';
 
-import { AnkiNoteRow, ankiDeckName, buildApkgPayload, parseAnkiModels } from './anki';
+import {
+  AnkiNoteRow,
+  ankiDeckName,
+  buildApkgPayload,
+  groupNotesBySection,
+  ImportSection,
+  parseAnkiModels,
+} from './anki';
 import { deckNameFromFile, ParsedImport } from './importFile';
 import { ImportCardPayload } from './importSamples';
 
@@ -107,11 +114,39 @@ export async function parseApkg(bytes: Uint8Array, fileName: string): Promise<Pa
 
     // 4. Read notes. cast(mid as text) keeps the model id aligned with the
     //    string keys of the models map (and dodges any 53-bit precision worry).
+    //    cast(id as text) links a note to its card rows (cards.nid) for subdeck
+    //    attribution below.
     const rows = await db.getAllAsync<AnkiNoteRow>(
-      'SELECT cast(mid as text) as mid, flds, tags FROM notes',
+      'SELECT cast(id as text) as id, cast(mid as text) as mid, flds, tags FROM notes',
     );
 
-    const payload: ImportCardPayload[] = buildApkgPayload(rows, models);
+    // 4b. Partition notes by their home subdeck (German::Verbs::B1, …) so the UI
+    //     can import just one. The `cards` table carries the note→deck link (did);
+    //     any failure here (odd schema, missing table) falls back to the flat
+    //     payload so import NEVER regresses to worse than today's one-deck import.
+    let payload: ImportCardPayload[];
+    let sections: ImportSection[] | undefined;
+    try {
+      const cardRows = await db.getAllAsync<{ nid: string; did: string; odid: string; ord: number }>(
+        'SELECT cast(nid as text) as nid, cast(did as text) as did, cast(odid as text) as odid, ord FROM cards ORDER BY nid, ord',
+      );
+      // First card per note wins (lowest ord). A card in a filtered deck keeps its
+      // real home in odid (!= '0'); use that so filtered decks don't hide cards.
+      const noteDid: Record<string, string> = {};
+      for (const r of cardRows) {
+        if (noteDid[r.nid] === undefined) {
+          noteDid[r.nid] = r.odid && r.odid !== '0' ? r.odid : r.did;
+        }
+      }
+      const deckMap = parseDeckMap(col?.decks ?? '{}');
+      const grouped = groupNotesBySection(rows, noteDid, deckMap, models);
+      payload = grouped.payload;
+      // A single section carries no choice → leave undefined so the UI stays flat.
+      sections = grouped.sections.length > 1 ? grouped.sections : undefined;
+    } catch {
+      payload = buildApkgPayload(rows, models);
+      sections = undefined;
+    }
     if (payload.length === 0) throw new ApkgError('empty', 'No notes with a front field.');
 
     const name = ankiDeckName(deckNames, deckNameFromFile(fileName));
@@ -120,7 +155,7 @@ export async function parseApkg(bytes: Uint8Array, fileName: string): Promise<Pa
     const fieldNames = Object.keys(models)
       .flatMap((mid) => models[mid].flds)
       .filter((f) => f !== '');
-    return { payload, name, fieldNames };
+    return { payload, name, fieldNames, sections };
   } finally {
     try {
       await db.closeAsync();
@@ -139,4 +174,19 @@ function parseDeckNames(decksJson: string): string[] {
   } catch {
     return [];
   }
+}
+
+/** col.decks JSON → { did: fullName } (the note→subdeck attribution map). */
+function parseDeckMap(decksJson: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    const raw = JSON.parse(decksJson) as Record<string, { name?: string }>;
+    for (const did of Object.keys(raw)) {
+      const name = raw[did]?.name;
+      if (typeof name === 'string') out[did] = name;
+    }
+  } catch {
+    // malformed decks JSON → empty map; grouping falls back to '(Other)'.
+  }
+  return out;
 }

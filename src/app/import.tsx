@@ -26,6 +26,8 @@ import {
   SnackbarHost,
   StackBar,
 } from '@/components/ui';
+import { ankiDeckName } from '@/domain/anki';
+import type { ImportSection } from '@/domain/anki';
 import {
   AnkiWebDeck,
   AnkiWebError,
@@ -43,7 +45,20 @@ import { useSnackbar } from '@/store/SnackbarContext';
 import { font, tnum } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
 
-type Stage = 'idle' | 'preview' | 'importing' | 'done';
+type Stage = 'idle' | 'sections' | 'preview' | 'importing' | 'done';
+
+/**
+ * A pending .apkg pick that split into >1 subdeck — held while the user chooses
+ * which subdecks to import (the 'sections' stage). Its flag/lang are inferred
+ * once from the whole-deck name + field names; the final deck name is derived
+ * from the SELECTION at Continue time via ankiDeckName().
+ */
+type PendingSections = {
+  name: string;
+  flag: string;
+  lang: string;
+  sections: ImportSection[];
+};
 
 /**
  * The staged item, discriminated by source. An AnkiWeb pick carries only the
@@ -72,6 +87,10 @@ export default function ImportScreen() {
   // the empty-state ("No shared decks match") from flashing before results land.
   const [searching, setSearching] = useState(true);
   const [chosen, setChosen] = useState<Staged | null>(null);
+  // The .apkg subdeck picker: the pending pick + the currently-selected deck ids
+  // (default all, so "import everything" stays one tap).
+  const [pending, setPending] = useState<PendingSections | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importPhase, setImportPhase] = useState<'download' | 'write' | null>(null);
   const [importedDeck, setImportedDeck] = useState<Deck | null>(null);
   const [importedCount, setImportedCount] = useState(0);
@@ -167,7 +186,7 @@ export default function ImportScreen() {
       const file = picked.result; // narrowed to File by the `canceled` discriminant
 
       // Hand a parsed deck to the existing staged flow.
-      const finish = ({ payload, name, fieldNames }: ParsedImport) => {
+      const finish = ({ payload, name, fieldNames, sections }: ParsedImport) => {
         if (payload.length === 0) {
           show('No cards found in that file.');
           return;
@@ -176,7 +195,17 @@ export default function ImportScreen() {
         // Anki field names, so TTS matches the words instead of forcing German
         // on every import (H6).
         const lang = inferLang([name, ...(fieldNames ?? [])]);
-        stageItem({ source: 'file', name, flag: LANG_FLAGS[lang] ?? '📄', lang, payload });
+        const flag = LANG_FLAGS[lang] ?? '📄';
+        // A multi-subdeck .apkg (German::Verbs::B1, …) → let the user pick which
+        // subdecks to import. A single-deck .apkg / CSV / AnkiWeb keeps the flat
+        // flow untouched (sections is undefined for those).
+        if (sections && sections.length > 1) {
+          setPending({ name, flag, lang, sections });
+          setSelected(new Set(sections.map((s) => s.did)));
+          setStage('sections');
+          return;
+        }
+        stageItem({ source: 'file', name, flag, lang, payload });
       };
 
       // Read the raw bytes ONCE and classify by magic. Android SAF often returns
@@ -311,6 +340,108 @@ export default function ImportScreen() {
       pathname: '/session',
       params: { kind: 'deck', deckId: importedDeck.id, label: importedDeck.name },
     });
+  };
+
+  /* ------------------------- .apkg subdeck picker tree -------------------------
+   * Strip the segments the subdecks all share (same idea as ankiDeckName —
+   * ['German'] for German::Vocabulary::A1 + German::Grammar::B1 …) then group the
+   * remainder by its first segment: 'Vocabulary' → [A1, B1], 'Verbs' → [A1, B1],
+   * so the picker reads as categories with level leaves. 1 remaining level → a
+   * flat list; the stripping never consumes a section's whole path (so every row
+   * keeps a label). Pure derivation — no setState here (React Compiler rule). */
+  const tree = useMemo(() => {
+    const secs = pending?.sections ?? [];
+    if (secs.length === 0) return { mode: 'flat' as const, leaves: [], groups: [] };
+    const paths = secs.map((s) => s.path);
+    const first = paths[0];
+    // Common leading segments, but leave every section at least one segment.
+    let minLen = paths[0].length;
+    for (const p of paths) if (p.length < minLen) minLen = p.length;
+    let common = 0;
+    for (let i = 0; i < minLen; i++) {
+      const seg = first[i];
+      if (seg && paths.every((p) => p[i] === seg)) common++;
+      else break;
+    }
+    if (common >= minLen) common = minLen - 1;
+
+    const rem = (s: ImportSection) => s.path.slice(common);
+    let maxRem = 0;
+    for (const s of secs) {
+      const r = rem(s).length;
+      if (r > maxRem) maxRem = r;
+    }
+
+    if (maxRem >= 2) {
+      // Grouped: category header + level leaves.
+      const order: string[] = [];
+      const byKey = new Map<string, { did: string; label: string; count: number }[]>();
+      for (const s of secs) {
+        const r = rem(s);
+        const key = r[0] || s.name;
+        const label = r.length > 1 ? r.slice(1).join(' · ') : r[0] || s.name;
+        if (!byKey.has(key)) {
+          byKey.set(key, []);
+          order.push(key);
+        }
+        byKey.get(key)?.push({ did: s.did, label, count: s.payload.length });
+      }
+      const groups = order.map((key) => {
+        const leaves = byKey.get(key) ?? [];
+        return { key, leaves, count: leaves.reduce((a, l) => a + l.count, 0) };
+      });
+      return { mode: 'grouped' as const, groups, leaves: [] };
+    }
+
+    // Flat: one row per subdeck.
+    const leaves = secs.map((s) => {
+      const r = rem(s);
+      return { did: s.did, label: r.join(' · ') || s.name, count: s.payload.length };
+    });
+    return { mode: 'flat' as const, leaves, groups: [] };
+  }, [pending]);
+
+  const toggleDid = (did: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(did)) next.delete(did);
+      else next.add(did);
+      return next;
+    });
+  };
+
+  const toggleGroup = (dids: string[]) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allOn = dids.every((d) => next.has(d));
+      for (const d of dids) {
+        if (allOn) next.delete(d);
+        else next.add(d);
+      }
+      return next;
+    });
+  };
+
+  const allDids = pending?.sections.map((s) => s.did) ?? [];
+  const allSelected = allDids.length > 0 && allDids.every((d) => selected.has(d));
+  const toggleAll = () => {
+    setSelected((prev) => (allDids.every((d) => prev.has(d)) ? new Set() : new Set(allDids)));
+  };
+
+  // Live selection tally for the footer summary + Continue gating.
+  const chosenSections = pending?.sections.filter((s) => selected.has(s.did)) ?? [];
+  const selCardCount = chosenSections.reduce((a, s) => a + s.payload.length, 0);
+
+  const continueSections = () => {
+    if (!pending || chosenSections.length === 0) return;
+    const payload = chosenSections.flatMap((s) => s.payload);
+    // Name from the SELECTION: one subdeck → its full name, several → their
+    // common prefix (ankiDeckName), falling back to the whole-deck pick name.
+    const name = ankiDeckName(
+      chosenSections.map((s) => s.name),
+      pending.name,
+    );
+    stageItem({ source: 'file', name, flag: pending.flag, lang: pending.lang, payload });
   };
 
   /* Preview rows differ by source: a file item knows its exact payload (so it
@@ -603,6 +734,146 @@ export default function ImportScreen() {
               </View>
             )}
           </>
+        )}
+
+        {stage === 'sections' && pending && (
+          <RiseIn duration={250}>
+            <Overline style={{ marginBottom: 10 }}>Choose subdecks — nothing imported yet</Overline>
+            <Text style={[font('serif', 600), { fontSize: 20, color: c.ink, marginBottom: 4 }]}>
+              {pending.name}
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 14,
+              }}
+            >
+              <Text style={[font('sans', 400), tnum, { fontSize: 13, color: c.ink3 }]}>
+                {pending.sections.length} subdecks
+              </Text>
+              <Pressable onPress={toggleAll} hitSlop={8}>
+                <Text style={[font('sans', 700), { fontSize: 13.5, color: c.pine }]}>
+                  {allSelected ? 'Clear all' : 'Select all'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {tree.mode === 'grouped'
+              ? tree.groups.map((g) => {
+                  const dids = g.leaves.map((l) => l.did);
+                  const allOn = dids.every((d) => selected.has(d));
+                  const someOn = dids.some((d) => selected.has(d));
+                  return (
+                    <CardBox key={g.key} pad={0} style={{ marginBottom: 12 }}>
+                      <Row
+                        onPress={() => toggleGroup(dids)}
+                        padV={13}
+                        style={{ paddingHorizontal: 16 }}
+                      >
+                        <Ion
+                          name={allOn ? 'checkbox' : someOn ? 'remove-circle' : 'square-outline'}
+                          size={22}
+                          color={allOn || someOn ? c.pine : c.ink3}
+                        />
+                        <Text style={[font('sans', 700), { flex: 1, fontSize: 14.5, color: c.ink }]}>
+                          {g.key}
+                        </Text>
+                        <Text style={[font('mono', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
+                          {g.count.toLocaleString('en-US')}
+                        </Text>
+                      </Row>
+                      {g.leaves.map((leaf, i) => {
+                        const on = selected.has(leaf.did);
+                        return (
+                          <Row
+                            key={leaf.did}
+                            onPress={() => toggleDid(leaf.did)}
+                            padV={11}
+                            last={i === g.leaves.length - 1}
+                            style={{ paddingLeft: 40, paddingRight: 16 }}
+                          >
+                            <Ion
+                              name={on ? 'checkbox' : 'square-outline'}
+                              size={20}
+                              color={on ? c.pine : c.ink3}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={[font('sans', 400), { flex: 1, fontSize: 14, color: c.ink2 }]}
+                            >
+                              {leaf.label}
+                            </Text>
+                            <Text
+                              style={[font('mono', 400), tnum, { fontSize: 12.5, color: c.ink }]}
+                            >
+                              {leaf.count.toLocaleString('en-US')}
+                            </Text>
+                          </Row>
+                        );
+                      })}
+                    </CardBox>
+                  );
+                })
+              : (
+                <CardBox pad={0}>
+                  {tree.leaves.map((leaf, i) => {
+                    const on = selected.has(leaf.did);
+                    return (
+                      <Row
+                        key={leaf.did}
+                        onPress={() => toggleDid(leaf.did)}
+                        padV={13}
+                        last={i === tree.leaves.length - 1}
+                        style={{ paddingHorizontal: 16 }}
+                      >
+                        <Ion
+                          name={on ? 'checkbox' : 'square-outline'}
+                          size={22}
+                          color={on ? c.pine : c.ink3}
+                        />
+                        <Text
+                          numberOfLines={1}
+                          style={[font('sans', 700), { flex: 1, fontSize: 14.5, color: c.ink }]}
+                        >
+                          {leaf.label}
+                        </Text>
+                        <Text style={[font('mono', 400), tnum, { fontSize: 12.5, color: c.ink3 }]}>
+                          {leaf.count.toLocaleString('en-US')}
+                        </Text>
+                      </Row>
+                    );
+                  })}
+                </CardBox>
+              )}
+
+            <Text
+              style={[
+                font('sans', 400),
+                tnum,
+                { fontSize: 12.5, color: c.ink3, marginTop: 14, marginBottom: 12, marginHorizontal: 2 },
+              ]}
+            >
+              Import {selCardCount.toLocaleString('en-US')} {selCardCount === 1 ? 'card' : 'cards'} ·{' '}
+              {chosenSections.length.toLocaleString('en-US')}{' '}
+              {chosenSections.length === 1 ? 'section' : 'sections'}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Btn kind="secondary" full style={{ flex: 1 }} onPress={() => setStage('idle')}>
+                Cancel
+              </Btn>
+              <Btn
+                full
+                style={{ flex: 1 }}
+                icon="arrow-forward"
+                disabled={chosenSections.length === 0}
+                onPress={continueSections}
+              >
+                Continue
+              </Btn>
+            </View>
+          </RiseIn>
         )}
 
         {stage === 'preview' && chosen && (
