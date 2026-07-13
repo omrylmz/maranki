@@ -4,7 +4,15 @@
  */
 import { describe, expect, test } from '@jest/globals';
 
-import { AnkiModel, buildApkgPayload, mapAnkiNote, parseAnkiModels } from './anki';
+import {
+  AnkiModel,
+  AnkiNoteRow,
+  ankiDeckName,
+  buildApkgPayload,
+  groupNotesBySection,
+  mapAnkiNote,
+  parseAnkiModels,
+} from './anki';
 
 const SEP = '\x1f';
 
@@ -83,5 +91,117 @@ describe('buildApkgPayload', () => {
       { mid: '7', flds: '{{c1::solo}}', tags: '' },
     ];
     expect(buildApkgPayload(notes, models)).toHaveLength(3); // 2 + 1
+  });
+});
+
+describe('groupNotesBySection', () => {
+  // A single Basic model shared by all the notes below.
+  const models = parseAnkiModels(
+    JSON.stringify({ '1': { name: 'Basic', type: 0, flds: [{ name: 'Front', ord: 0 }, { name: 'Back', ord: 1 }] } }),
+  );
+  const note = (id: string, front: string): AnkiNoteRow => ({ id, mid: '1', flds: `${front}${SEP}gloss`, tags: '' });
+
+  const deckNames = {
+    '10': 'German::Verbs::A1',
+    '20': 'German::Verbs::B1',
+    '30': 'German::Vocabulary::A1',
+  };
+
+  test('partitions notes into one section per distinct subdeck, with counts', () => {
+    const notes = [note('a', 'gehen'), note('b', 'kommen'), note('c', 'der Hund')];
+    const noteDid = { a: '20', b: '20', c: '30' };
+    const { sections, payload } = groupNotesBySection(notes, noteDid, deckNames, models);
+
+    expect(payload).toHaveLength(3);
+    expect(sections.map((s) => s.name)).toEqual(['German::Verbs::B1', 'German::Vocabulary::A1']); // sorted
+    const verbs = sections.find((s) => s.did === '20')!;
+    expect(verbs.payload).toHaveLength(2);
+    expect(verbs.path).toEqual(['German', 'Verbs', 'B1']);
+    expect(sections.find((s) => s.did === '30')!.payload).toHaveLength(1);
+  });
+
+  test('a cloze note (2 cards from ONE note) attributes BOTH cards to its subdeck', () => {
+    // The only way one note yields multiple cards here is a cloze model: {{c1}} +
+    // {{c2}} → 2 cards, and BOTH must land in the note's section AND the flat
+    // payload. Guards the two-loop append: a regression that dropped the extra
+    // card from the section loop (but not the flat payload) would pass every
+    // single-card test above yet silently import half a subdeck's cards.
+    const clozeModels = parseAnkiModels(
+      JSON.stringify({ '2': { name: 'Cloze', type: 1, flds: [{ name: 'Text', ord: 0 }] } }),
+    );
+    const notes: AnkiNoteRow[] = [{ id: 'a', mid: '2', flds: '{{c1::eins}} und {{c2::zwei}}', tags: '' }];
+    const { sections, payload } = groupNotesBySection(notes, { a: '20' }, deckNames, clozeModels);
+    expect(payload).toHaveLength(2); // c1 + c2
+    expect(sections).toHaveLength(1);
+    expect(sections[0].did).toBe('20');
+    expect(sections[0].payload).toHaveLength(2); // BOTH cards attributed here
+    // Multi-card union === flat (single section → order preserved too).
+    expect(sections.flatMap((s) => s.payload)).toEqual(payload);
+  });
+
+  test('odid override: a note is attributed via the caller-resolved home deck', () => {
+    // The caller resolves odid→did before calling; here a note whose home deck is
+    // '10' (A1 verbs) groups under that name, proving section keys follow noteDid.
+    const notes = [note('a', 'sein'), note('b', 'gehen')];
+    const noteDid = { a: '10', b: '20' };
+    const { sections } = groupNotesBySection(notes, noteDid, deckNames, models);
+    expect(sections.map((s) => s.name)).toEqual(['German::Verbs::A1', 'German::Verbs::B1']);
+  });
+
+  test("a note with no known did → the single '(Other)' bucket", () => {
+    const notes = [note('a', 'gehen'), note('b', 'orphan'), note('c', 'nodeck')];
+    // 'b' maps to an unknown did; 'c' has no entry at all → both go to (Other).
+    const noteDid = { a: '20', b: '999', c: undefined as unknown as string };
+    const { sections } = groupNotesBySection(notes, noteDid, deckNames, models);
+    const other = sections.find((s) => s.did === '');
+    expect(other).toBeDefined();
+    expect(other!.name).toBe('(Other)');
+    expect(other!.payload).toHaveLength(2);
+    expect(other!.path).toEqual(['(Other)']);
+  });
+
+  test('INVARIANT: union of all section payloads === the flat payload (count + content)', () => {
+    const notes = [note('a', 'gehen'), note('b', 'der Hund'), note('c', 'orphan')];
+    const noteDid = { a: '20', b: '30', c: 'missing' };
+    const { sections, payload } = groupNotesBySection(notes, noteDid, deckNames, models);
+    const union = sections.flatMap((s) => s.payload);
+    expect(union).toHaveLength(payload.length);
+    // Same objects, same order per section concat (import-all === import-whole-deck).
+    const words = union.map((c) => c.word).sort();
+    expect(words).toEqual(payload.map((c) => c.word).sort());
+  });
+
+  test('single-section input yields exactly one section', () => {
+    const notes = [note('a', 'gehen'), note('b', 'kommen')];
+    const { sections } = groupNotesBySection(notes, { a: '20', b: '20' }, deckNames, models);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].did).toBe('20');
+  });
+
+  test('an empty deck (no cards attributed) is dropped', () => {
+    // '10' exists in deckNames but no note points at it → it must not appear.
+    const notes = [note('a', 'gehen')];
+    const { sections } = groupNotesBySection(notes, { a: '20' }, deckNames, models);
+    expect(sections.map((s) => s.did)).toEqual(['20']);
+    expect(sections.some((s) => s.did === '10')).toBe(false);
+  });
+
+  test("notes whose model maps to no card don't create a section", () => {
+    // An all-empty note yields 0 cards → contributes nothing (no phantom section).
+    const empty: AnkiNoteRow = { id: 'z', mid: '1', flds: `${SEP}`, tags: '' };
+    const notes = [note('a', 'gehen'), empty];
+    const { sections, payload } = groupNotesBySection(notes, { a: '20', z: '10' }, deckNames, models);
+    expect(payload).toHaveLength(1);
+    expect(sections.map((s) => s.did)).toEqual(['20']);
+  });
+});
+
+describe('ankiDeckName over selected subdecks', () => {
+  test('a single selected subdeck name → its full friendly name', () => {
+    expect(ankiDeckName(['German::Verbs::B1'], 'fallback')).toBe('German Verbs B1');
+  });
+
+  test('two sibling subdecks → their common prefix', () => {
+    expect(ankiDeckName(['German::Verbs::B1', 'German::Verbs::B2'], 'fallback')).toBe('German Verbs');
   });
 });

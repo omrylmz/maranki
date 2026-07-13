@@ -30,10 +30,30 @@ export interface AnkiModel {
 export type AnkiModelMap = Record<string, AnkiModel>;
 
 export interface AnkiNoteRow {
+  /** Note id (stringified) — links a note to its card rows (cards.nid) so the
+   *  note can be attributed to a subdeck. Optional so existing callers/tests that
+   *  build rows without it (buildApkgPayload) keep compiling. */
+  id?: string;
   /** Model id (stringified — JS can't hold Anki's 53-bit+ ids exactly as keys). */
   mid: string;
   flds: string;
   tags: string;
+}
+
+/**
+ * One selectable subdeck within an imported .apkg. An Anki collection groups its
+ * cards into decks (German::Verbs::B1, …); parsing preserves that structure so
+ * the UI can offer "import just this subdeck" instead of one flattened deck.
+ */
+export interface ImportSection {
+  /** Anki deck id (stringified) — the stable selection key. '' = "(Other)". */
+  did: string;
+  /** Full deck name, e.g. "German::Verbs::B1". */
+  name: string;
+  /** name split on "::" and trimmed, e.g. ['German','Verbs','B1']. */
+  path: string[];
+  /** Cards mapped from the notes that live in this subdeck. */
+  payload: ImportCardPayload[];
 }
 
 /* ----------------------------------------------------------- models + decks */
@@ -355,4 +375,52 @@ export function buildApkgPayload(notes: AnkiNoteRow[], models: AnkiModelMap): Im
   const out: ImportCardPayload[] = [];
   for (const n of notes) out.push(...mapAnkiNote(n.flds, n.tags, models[n.mid]));
   return out;
+}
+
+/**
+ * Map the notes table AND partition the cards by subdeck. Returns the same flat
+ * `payload` buildApkgPayload would (so nothing regresses when the caller ignores
+ * sections) PLUS one `ImportSection` per distinct deck the notes fall into.
+ *
+ * A note is placed by `noteDid[note.id]` (nid → home deck id, resolved by the
+ * caller from the cards table); a note with no known did — or a did with no name
+ * — falls into a single '(Other)' bucket so the sections always PARTITION every
+ * mapped card (union of section payloads === flat payload, same order/content).
+ * Empty decks (e.g. an unused 'Default') carry no cards and are dropped.
+ *
+ * Pure + Hermes-safe: no normalize/replaceAll/lookbehind, no Date/Math.random,
+ * a plain a<b comparator (not localeCompare).
+ */
+export function groupNotesBySection(
+  notes: AnkiNoteRow[],
+  noteDid: Record<string, string>,
+  deckNames: Record<string, string>,
+  models: AnkiModelMap,
+): { payload: ImportCardPayload[]; sections: ImportSection[] } {
+  const payload: ImportCardPayload[] = [];
+  const byDid = new Map<string, ImportSection>();
+
+  for (const n of notes) {
+    const cards = mapAnkiNote(n.flds, n.tags, models[n.mid]);
+    if (cards.length === 0) continue;
+    for (const c of cards) payload.push(c);
+
+    // Resolve the note's home deck; unknown did or unnamed deck → '(Other)'.
+    const rawDid = noteDid[n.id ?? ''];
+    const hasName = rawDid !== undefined && typeof deckNames[rawDid] === 'string';
+    const did = hasName ? rawDid : '';
+    const name = hasName ? deckNames[rawDid] : '(Other)';
+
+    let section = byDid.get(did);
+    if (!section) {
+      section = { did, name, path: name.split('::').map((s) => s.trim()), payload: [] };
+      byDid.set(did, section);
+    }
+    for (const c of cards) section.payload.push(c);
+  }
+
+  const sections = Array.from(byDid.values()).filter((s) => s.payload.length > 0);
+  // Plain string comparator (Hermes lacks a reliable Intl/localeCompare).
+  sections.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return { payload, sections };
 }
