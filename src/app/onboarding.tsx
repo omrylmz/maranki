@@ -34,10 +34,10 @@ export default function OnboardingScreen() {
   const finish = () => {
     applyChoices();
     // Blank slate: no decks are seeded, so there is no session to jump into.
-    // Pop back to the live (tabs) root (onboarding was pushed on top of it) so
-    // the learner lands on Home — router.back() matches skip() and avoids
-    // stacking a duplicate (tabs) entry that router.replace('/(tabs)') would.
-    router.back();
+    // Land on Home: router.replace('/(tabs)') targets the tab group's default
+    // (index = Home) deterministically, whereas router.back() would reveal
+    // whichever tab happened to sit under the pushed onboarding route.
+    router.replace('/(tabs)');
   };
 
   const skip = () => {

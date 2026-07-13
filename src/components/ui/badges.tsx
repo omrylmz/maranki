@@ -216,7 +216,11 @@ const PROVENANCE = {
  */
 export function DeckTag({ builtin }: { builtin: boolean }) {
   const c = useColors();
-  const p = builtin ? PROVENANCE.curated : PROVENANCE.imported;
+  // Provenance is a curated-catalog signal; a blank-slate app holds only the
+  // user's own decks, so a plain created/imported deck earns no tag — only a
+  // builtin (curated) deck does. (Avoids mislabeling every deck "Imported".)
+  if (!builtin) return null;
+  const p = PROVENANCE.curated;
   const fg = c[p.fg];
   const bg = c[p.bg];
   return (
@@ -261,13 +265,14 @@ export function DeckTile({
 }) {
   const c = useColors();
   const d = Math.max(15, Math.round(size * 0.44));
-  const p = builtin ? PROVENANCE.curated : PROVENANCE.imported;
+  const p = PROVENANCE.curated;
   const fg = c[p.fg];
   const bg = c[p.bg];
   return (
     <View style={{ width: size, height: size }}>
       <IconSq icon={icon} size={size} />
-      {seal && (
+      {/* Seal marks a curated (builtin) deck only — user decks show a bare icon. */}
+      {seal && builtin && (
         <View
           style={{
             position: 'absolute',
