@@ -48,8 +48,6 @@ import {
   SrsSettings,
 } from '@/domain/types';
 import { buildSeedState } from '@/domain/seed';
-import { catalogAddPlan, CURATED_DECKS, materializeCatalogDeck } from '@/domain/deckCatalog';
-import { langCode } from '@/domain/words';
 import { DeleteStrategy, resolveDeckDeletion } from './deckOps';
 import { BACKUP_KEY, classifyStored, serialize, STORAGE_KEY } from './persistence';
 import { attributionDay, rollStreak, tallyReview, untallyReview } from './tally';
@@ -108,7 +106,7 @@ export interface CompleteSessionArgs {
   /**
    * The session's final rated card (post-rating). The final rateCard commits in
    * the same tick as completeSession, so the committed-state mirror is stale by
-   * one rating; passing the fresh card lets mastery/language achievements be
+   * one rating; passing the fresh card lets mastery achievements be
    * scored against the true end-of-session state.
    */
   finalCard?: Card;
@@ -128,7 +126,7 @@ interface DataActions {
   buryCard: (cardId: string) => void;
   addCard: (
     deckId: string,
-    fields: Pick<Card, 'word' | 'tr'> & Partial<Card>,
+    fields: Pick<Card, 'front' | 'back'> & Partial<Card>,
   ) => Card;
   updateCard: (cardId: string, patch: Partial<Card>) => void;
   deleteCard: (cardId: string) => void;
@@ -137,11 +135,9 @@ interface DataActions {
   updateDeck: (deckId: string, patch: Partial<Deck>) => void;
   deleteDeck: (deckId: string, strategy: DeleteStrategy) => void;
   importDeck: (
-    deck: Pick<Deck, 'name' | 'flag' | 'lang'> & Partial<Deck>,
-    cards: (Pick<Card, 'word' | 'tr'> & Partial<Card>)[],
+    deck: Pick<Deck, 'name'> & Partial<Deck>,
+    cards: (Pick<Card, 'front' | 'back'> & Partial<Card>)[],
   ) => Deck;
-  /** Add (or reactivate) a curated, filter-ready built-in deck by its stable id. */
-  addCatalogDeck: (catalogId: string) => void;
 
   setGoals: (goalReviews: number, goalNew: number) => void;
   updateSrsSettings: (patch: Partial<SrsSettings>) => void;
@@ -384,8 +380,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     // M6: the final rateCard committed in this same tick, so stateRef's cards are
     // stale by one rating. Substitute the freshly-rated final card before scoring
-    // card-derived achievements, so a card that just graduated to mastered (or
-    // introduced a new language) is counted this session, not next.
+    // card-derived achievements, so a card that just graduated to mastered is
+    // counted this session, not next.
     const finalCard = args.finalCard;
     const cards = finalCard
       ? prev.cards.map((c) => (c.id === finalCard.id ? finalCard : c))
@@ -393,7 +389,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const masteredCount = cards.filter(
       (c) => c.reps > 0 && c.stepIndex === null && c.intervalDays >= MASTERED_INTERVAL_DAYS,
     ).length;
-    const languagesStudied = new Set(cards.filter((c) => c.reps > 0).map((c) => c.lang)).size;
     const projectedPerson: Person = {
       ...person,
       xp: person.xp + xpTotal,
@@ -406,7 +401,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       cards,
       sessions: [...prev.sessions, session],
       masteredCount,
-      languagesStudied,
       fastAnswers: projectedPerson.fastAnswers,
     });
     let freezesAfter = freezes;
@@ -518,16 +512,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const card: Card = {
       id: uid('c'),
       deckId,
-      word: fields.word,
-      article: fields.article ?? null,
-      base: fields.base ?? fields.word,
-      tr: fields.tr,
-      ipa: fields.ipa,
-      ex: fields.ex,
-      exTr: fields.exTr,
-      level: fields.level ?? null,
-      type: fields.type ?? null,
-      lang: fields.lang ?? 'de',
+      front: fields.front,
+      back: fields.back,
+      example: fields.example,
+      notes: fields.notes,
       tags: fields.tags,
       fav: fields.fav ?? false,
       flagged: false,
@@ -563,9 +551,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const deck: Deck = {
       id: uid('d'),
       name: fields.name,
-      flag: fields.flag ?? '📚',
-      lang: fields.lang ?? '',
-      level: fields.level ?? null,
+      icon: fields.icon ?? '🗂️',
       builtin: false,
       active: fields.active ?? true,
       createdAt: Date.now(),
@@ -592,31 +578,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const deck: Deck = {
       id: uid('d'),
       name: deckFields.name,
-      flag: deckFields.flag,
-      lang: deckFields.lang,
-      level: deckFields.level ?? null,
+      icon: deckFields.icon ?? '🗂️',
       builtin: false,
       active: true,
       createdAt: now,
     };
     const srs = stateRef.current.settings.srs;
-    // Cards inherit the DECK's language (as a code) when the payload doesn't carry
-    // one — so an imported Spanish/French deck gets the right TTS instead of every
-    // import being forced to German (H6).
-    const deckLang = langCode(deckFields.lang);
     const cards: Card[] = cardFields.map((f, i) => ({
       id: uid('c'),
       deckId: deck.id,
-      word: f.word,
-      article: f.article ?? null,
-      base: f.base ?? f.word,
-      tr: f.tr,
-      ipa: f.ipa,
-      ex: f.ex,
-      exTr: f.exTr,
-      level: f.level ?? null,
-      type: f.type ?? null,
-      lang: f.lang ?? deckLang,
+      front: f.front,
+      back: f.back,
+      example: f.example,
+      notes: f.notes,
       tags: f.tags,
       fav: false,
       flagged: false,
@@ -634,34 +608,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }));
     setState((s) => ({ ...s, decks: [...s.decks, deck], cards: [...s.cards, ...cards] }));
     return deck;
-  }, []);
-
-  // Curated add: idempotent and robust to a prior delete. Unlike addDeck/
-  // importDeck (which force builtin:false), this keeps the catalog's STABLE id
-  // and builtin:true, so re-adding a deleted curated deck rejoins under the same
-  // identity — only its CARD ids are minted fresh. The plan is read from the
-  // committed mirror; the work (id-minting) happens OUTSIDE the updater and the
-  // updater stays a pure spread (mirrors importDeck), with a defensive dedupe.
-  const addCatalogDeck = useCallback<DataActions['addCatalogDeck']>((catalogId) => {
-    const entry = CURATED_DECKS.find((e) => e.id === catalogId);
-    if (!entry) return;
-    const plan = catalogAddPlan(stateRef.current.decks, catalogId);
-    if (plan === 'noop') return;
-    if (plan === 'activate') {
-      setState((s) => ({
-        ...s,
-        decks: s.decks.map((d) => (d.id === catalogId ? { ...d, active: true } : d)),
-      }));
-      return;
-    }
-    // plan === 'create' — one transform owns the deck+card shape (incl. the
-    // Deck.lang display-name vs Card.lang code split); see materializeCatalogDeck.
-    const { deck, cards } = materializeCatalogDeck(entry, Date.now());
-    setState((s) =>
-      s.decks.some((d) => d.id === entry.id)
-        ? s
-        : { ...s, decks: [...s.decks, deck], cards: [...s.cards, ...cards] },
-    );
   }, []);
 
   /* ---------------------------------------------------------- settings */
@@ -714,7 +660,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       updateDeck,
       deleteDeck,
       importDeck,
-      addCatalogDeck,
       setGoals,
       updateSrsSettings,
       updateAppSettings,
@@ -737,7 +682,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       updateDeck,
       deleteDeck,
       importDeck,
-      addCatalogDeck,
       setGoals,
       updateSrsSettings,
       updateAppSettings,
@@ -768,15 +712,11 @@ export function useAchievements() {
     const masteredCount = state.cards.filter(
       (c) => c.reps > 0 && c.stepIndex === null && c.intervalDays >= 21,
     ).length;
-    const languagesStudied = new Set(
-      state.cards.filter((c) => c.reps > 0).map((c) => c.lang),
-    ).size;
     return achievementStatuses({
       person: state.person,
       cards: state.cards,
       sessions: state.sessions,
       masteredCount,
-      languagesStudied,
       fastAnswers: state.person.fastAnswers,
     });
   }, [state]);

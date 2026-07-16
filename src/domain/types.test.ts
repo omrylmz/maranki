@@ -1,25 +1,20 @@
 /**
- * Runtime sanity for the PR #1 "Path A" type change: Card.level and Card.type
- * are now (CefrLevel | null) / (WordType | null). A card with null linguistics
- * must be a valid Card and must flow through the lifecycle/display-state
- * helpers unchanged — the nullness is purely "no metadata", not a broken card.
+ * Runtime sanity for the core Card lifecycle. A card flows through the
+ * lifecycle/display-state helpers purely on its SRS fields (reps, stepIndex,
+ * intervalDays, due) — the front/back content is inert to scheduling. "due"
+ * promotion and the buried gate (L13) are the load-bearing behaviors here.
  */
 import { describe, expect, it } from '@jest/globals';
 
-import { Card, CefrLevel, displayState, lifecycleState, WordType } from './types';
+import { Card, displayState, lifecycleState } from './types';
 
 const NOW = 1_700_000_000_000;
 
 function makeCard(o: Partial<Card> & Pick<Card, 'id'>): Card {
   return {
     deckId: 'd',
-    word: 'word',
-    article: null,
-    base: 'word',
-    tr: 'translation',
-    level: null,
-    type: null,
-    lang: 'es',
+    front: 'front',
+    back: 'back',
     ease: 2.5,
     intervalDays: 0,
     stepIndex: null,
@@ -32,27 +27,16 @@ function makeCard(o: Partial<Card> & Pick<Card, 'id'>): Card {
   };
 }
 
-describe('Card with null linguistics (Path A)', () => {
-  it('accepts null for level and type and reads them back as null', () => {
-    // Documents the contract: null is a first-class value for these fields.
-    const level: CefrLevel | null = null;
-    const type: WordType | null = null;
-    const c = makeCard({ id: 'imp', level, type });
-    expect(c.level).toBeNull();
-    expect(c.type).toBeNull();
-  });
-
-  it('a brand-new null-level card has lifecycle/display state "new"', () => {
-    const c = makeCard({ id: 'new', level: null, type: null, reps: 0 });
+describe('lifecycleState / displayState', () => {
+  it('a brand-new card has lifecycle/display state "new"', () => {
+    const c = makeCard({ id: 'new', reps: 0 });
     expect(lifecycleState(c)).toBe('new');
     expect(displayState(c, NOW)).toBe('new');
   });
 
-  it('a reviewed null-level card still resolves to "due" when overdue', () => {
+  it('a reviewed card resolves to "due" when overdue', () => {
     const c = makeCard({
       id: 'due',
-      level: null,
-      type: null,
       reps: 3,
       stepIndex: null,
       intervalDays: 5,
@@ -62,12 +46,6 @@ describe('Card with null linguistics (Path A)', () => {
     // lifecycle is "review"; display promotes overdue review cards to "due".
     expect(lifecycleState(c)).toBe('review');
     expect(displayState(c, NOW)).toBe('due');
-  });
-
-  it('a curated card still carries its real level and type', () => {
-    const c = makeCard({ id: 'cur', level: 'A1', type: 'noun' });
-    expect(c.level).toBe('A1');
-    expect(c.type).toBe('noun');
   });
 });
 

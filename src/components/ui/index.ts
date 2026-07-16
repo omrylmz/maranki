@@ -4,14 +4,12 @@ export { Btn, IconBtn, FAB } from './buttons';
 export type { BtnKind } from './buttons';
 export {
   STATE_ICON,
-  LevelBadge,
   StateDot,
   StateBadge,
   Chip,
   Pill,
-  TypePill,
   StreakChip,
-  FlagSq,
+  IconSq,
   DeckTag,
   DeckTile,
 } from './badges';

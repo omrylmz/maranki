@@ -40,7 +40,6 @@ function ctx(partial: Partial<AchievementContext> = {}): AchievementContext {
     cards: [],
     sessions: [],
     masteredCount: 0,
-    languagesStudied: 0,
     fastAnswers: 0,
     ...partial,
   };

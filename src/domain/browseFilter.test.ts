@@ -1,12 +1,10 @@
 /**
- * Unit tests for the pure Library (Browse) filter pipeline.
+ * Unit tests for the pure Library (Browse) filter pipeline, lifted out of
+ * browse.tsx so search → filter → sort is testable without React.
  *
- * These PIN the PR #1 "Path A" decision: the ABSENCE of linguistic metadata is
- * represented in the TYPE (Card.level / Card.type are nullable) and level/type
- * are gated PER CARD on `!= null` — not on deck provenance. The key regression
- * guarded here is that an imported card with level=null must NOT behave like a
- * real A1 card under a level filter, while Deck / Status / free-text filters
- * keep working for every card regardless of null linguistics.
+ * Pipeline order: collection scope → chip → tag/deck/status filters → search
+ * tokens (tag:/deck:) → free text (over front/back/example/notes/tags) → sort.
+ * The pipeline is pure: it returns a fresh array and never mutates its inputs.
  */
 import { describe, expect, it } from '@jest/globals';
 
@@ -22,13 +20,8 @@ const NOW = 1_700_000_000_000;
 function makeCard(o: Partial<Card> & Pick<Card, 'id'>): Card {
   return {
     deckId: 'd',
-    word: 'word',
-    article: null,
-    base: 'word',
-    tr: 'translation',
-    level: null,
-    type: null,
-    lang: 'es',
+    front: 'front',
+    back: 'back',
     ease: 2.5,
     intervalDays: 0,
     stepIndex: null,
@@ -43,9 +36,7 @@ function makeCard(o: Partial<Card> & Pick<Card, 'id'>): Card {
 
 function makeDeck(o: Partial<Deck> & Pick<Deck, 'id' | 'name'>): Deck {
   return {
-    flag: '🏳️',
-    lang: 'es',
-    level: null,
+    icon: '🗂️',
     builtin: false,
     active: true,
     createdAt: 0,
@@ -58,207 +49,184 @@ function makeOpts(o: Partial<BrowseFilterOpts> = {}): BrowseFilterOpts {
     chip: 'all',
     q: '',
     sort: 'smart',
-    fLevels: [],
+    fTags: [],
     fStatus: [],
     fDecks: [],
     ...o,
   };
 }
 
-// A curated, built-in card carrying real linguistic metadata.
-const curatedA1 = makeCard({
-  id: 'curated-a1',
-  deckId: 'de-everyday',
-  word: 'die Stunde',
-  base: 'Stunde',
-  tr: 'the hour',
-  level: 'A1',
-  type: 'noun',
-  lang: 'de',
+const cardApple = makeCard({
+  id: 'apple',
+  deckId: 'deck-basics',
+  front: 'apple',
+  back: 'a round fruit',
+  example: 'She ate a crisp apple.',
+  tags: ['fruit', 'food'],
 });
-const curatedB1 = makeCard({
-  id: 'curated-b1',
-  deckId: 'de-everyday',
-  word: 'entwickeln',
-  base: 'entwickeln',
-  tr: 'to develop',
-  level: 'B1',
-  type: 'verb',
-  lang: 'de',
+const cardRun = makeCard({
+  id: 'run',
+  deckId: 'deck-basics',
+  front: 'run',
+  back: 'to move quickly',
+  notes: 'irregular past tense: ran',
+  tags: ['verbs'],
 });
-// An imported card: the source carried NO level/type, so both are null.
-const imported = makeCard({
-  id: 'imported-1',
-  deckId: 'imp-deck',
-  word: 'hola',
-  base: 'hola',
-  tr: 'hello',
-  level: null,
-  type: null,
-  lang: 'es',
+const cardCat = makeCard({
+  id: 'cat',
+  deckId: 'deck-extra',
+  front: 'cat',
+  back: 'a small feline',
+  tags: ['animals'],
 });
 
 const DECKS: Deck[] = [
-  makeDeck({ id: 'de-everyday', name: 'German — Everyday', lang: 'de', builtin: true, level: 'A1' }),
-  makeDeck({ id: 'imp-deck', name: 'Imported CSV', lang: 'es', builtin: false, level: null }),
+  makeDeck({ id: 'deck-basics', name: 'Basics', builtin: true }),
+  makeDeck({ id: 'deck-extra', name: 'Extra Vocabulary', builtin: false }),
 ];
 
-const ALL = [curatedA1, curatedB1, imported];
+const ALL = [cardApple, cardRun, cardCat];
 const ids = (cards: Card[]) => cards.map((c) => c.id).sort();
 
 describe('parseQuery', () => {
-  it('extracts level/type/deck tokens, lowercases them, and leaves the free text', () => {
-    const parsed = parseQuery('Hola level:B1 type:Verb deck:"German — Everyday"');
+  it('extracts tag/deck tokens, lowercases them, and leaves the free text', () => {
+    const parsed = parseQuery('Apple tag:Food deck:"Extra Vocabulary"');
     expect(parsed).toEqual({
-      text: 'hola',
-      level: 'b1',
-      type: 'verb',
-      deck: 'german — everyday',
+      text: 'apple',
+      tag: 'food',
+      deck: 'extra vocabulary',
     });
   });
 
   it('returns undefined tokens and the lowercased free text when no tokens are present', () => {
     expect(parseQuery('Hello World')).toEqual({
       text: 'hello world',
-      level: undefined,
-      type: undefined,
+      tag: undefined,
       deck: undefined,
     });
   });
 
   it('handles a lone token with empty residual text', () => {
-    expect(parseQuery('level:A1')).toEqual({
+    expect(parseQuery('tag:verbs')).toEqual({
       text: '',
-      level: 'a1',
-      type: undefined,
+      tag: 'verbs',
       deck: undefined,
     });
   });
 });
 
-describe('filterBrowseCards — per-card level/type gating (PR #1 Path A)', () => {
-  it('EXCLUDES a null-level card from a level filter and INCLUDES the real A1 card', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fLevels: ['A1'] }), NOW);
-    expect(ids(res)).toEqual(['curated-a1']);
-    // the regression guard: the null-level import must NOT be treated as an A1.
-    expect(res.map((c) => c.id)).not.toContain('imported-1');
+describe('filterBrowseCards — tag filtering (fTags + tag: token)', () => {
+  it('fTags includes only cards carrying a selected tag', () => {
+    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fTags: ['animals'] }), NOW);
+    expect(ids(res)).toEqual(['cat']);
   });
 
-  it('keeps excluding the null-level card even under a multi-level filter', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fLevels: ['A1', 'B1'] }), NOW);
-    expect(ids(res)).toEqual(['curated-a1', 'curated-b1']);
-    expect(res.map((c) => c.id)).not.toContain('imported-1');
+  it('fTags across multiple tags unions the matches', () => {
+    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fTags: ['food', 'verbs'] }), NOW);
+    expect(ids(res)).toEqual(['apple', 'run']);
   });
 
-  it('search "level:a1" matches the A1 card and EXCLUDES the null-level card', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'level:a1' }), NOW);
-    expect(ids(res)).toEqual(['curated-a1']);
+  it('search "tag:verbs" matches only the tagged card', () => {
+    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'tag:verbs' }), NOW);
+    expect(ids(res)).toEqual(['run']);
   });
 
-  it('search "level:b1" matches only the B1 card', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'level:b1' }), NOW);
-    expect(ids(res)).toEqual(['curated-b1']);
-  });
-
-  it('search "type:noun" EXCLUDES the null-type card', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'type:noun' }), NOW);
-    expect(ids(res)).toEqual(['curated-a1']);
-    expect(res.map((c) => c.id)).not.toContain('imported-1');
-  });
-
-  it('search "type:verb" matches only the verb card', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'type:verb' }), NOW);
-    expect(ids(res)).toEqual(['curated-b1']);
-  });
-
-  it('a CSV-style card with a REAL level participates in its level filter (old builtin gate would have hidden it)', () => {
-    const csvCard = makeCard({
-      id: 'csv-real',
-      deckId: 'imp-deck', // imported provenance (builtin: false)...
-      level: 'A2', // ...but it carries a real Level column
-      type: 'noun',
-      word: 'gato',
-      tr: 'cat',
-    });
-    const res = filterBrowseCards([csvCard, imported], DECKS, [], makeOpts({ fLevels: ['A2'] }), NOW);
-    expect(ids(res)).toEqual(['csv-real']);
+  it('a tag filter excludes cards without any tags', () => {
+    const untagged = makeCard({ id: 'untagged', deckId: 'deck-basics', front: 'x', back: 'y' });
+    const res = filterBrowseCards([...ALL, untagged], DECKS, [], makeOpts({ fTags: ['food'] }), NOW);
+    expect(res.map((c) => c.id)).not.toContain('untagged');
   });
 });
 
-describe('filterBrowseCards — universal filters work for ALL cards regardless of null linguistics', () => {
-  it('deck filter includes the imported (null-meta) card', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fDecks: ['imp-deck'] }), NOW);
-    expect(ids(res)).toEqual(['imported-1']);
+describe('filterBrowseCards — deck / status / collection filters', () => {
+  it('deck filter includes only the selected deck', () => {
+    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fDecks: ['deck-extra'] }), NOW);
+    expect(ids(res)).toEqual(['cat']);
   });
 
   it('deck filter across both decks returns every card', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fDecks: ['de-everyday', 'imp-deck'] }), NOW);
-    expect(ids(res)).toEqual(['curated-a1', 'curated-b1', 'imported-1']);
+    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fDecks: ['deck-basics', 'deck-extra'] }), NOW);
+    expect(ids(res)).toEqual(['apple', 'cat', 'run']);
   });
 
-  it('free-text search matches the null-meta card by word', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'hola' }), NOW);
-    expect(ids(res)).toEqual(['imported-1']);
+  it('"deck:" token matches by deck name', () => {
+    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'deck:extra' }), NOW);
+    expect(ids(res)).toEqual(['cat']);
   });
 
-  it('free-text search matches a curated card by its translation', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'hour' }), NOW);
-    expect(ids(res)).toEqual(['curated-a1']);
-  });
-
-  it('"deck:" token matches by deck name and resolves the null-meta deck', () => {
-    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'deck:imported' }), NOW);
-    expect(ids(res)).toEqual(['imported-1']);
-  });
-
-  it('status filter (New) includes every new card, including the null-level import', () => {
+  it('status filter (New) includes every new card', () => {
     // all three fixtures have reps:0 → displayState "new"
     const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ fStatus: ['New'] }), NOW);
-    expect(ids(res)).toEqual(['curated-a1', 'curated-b1', 'imported-1']);
+    expect(ids(res)).toEqual(['apple', 'cat', 'run']);
   });
 
-  it('chip "new" keeps only unreviewed cards, irrespective of level/type nullness', () => {
+  it('chip "new" keeps only unreviewed cards', () => {
     const reviewed = makeCard({
       id: 'reviewed',
-      level: null,
-      type: null,
       reps: 5,
       stepIndex: null,
       intervalDays: 30,
       due: NOW - DAY,
       lastReviewedAt: NOW - DAY,
     });
-    const res = filterBrowseCards([curatedA1, reviewed], DECKS, [], makeOpts({ chip: 'new' }), NOW);
-    expect(ids(res)).toEqual(['curated-a1']);
+    const res = filterBrowseCards([cardApple, reviewed], DECKS, [], makeOpts({ chip: 'new' }), NOW);
+    expect(ids(res)).toEqual(['apple']);
   });
 
-  it('collection scope ("favorites") includes a starred null-level card', () => {
-    const favImport = makeCard({
-      id: 'fav-import',
-      deckId: 'imp-deck',
-      level: null,
-      type: null,
+  it('collection scope ("favorites") includes only starred cards', () => {
+    const favCard = makeCard({
+      id: 'fav-card',
+      deckId: 'deck-extra',
       fav: true,
-      word: 'gracias',
-      tr: 'thanks',
+      front: 'thanks',
+      back: 'gratitude',
     });
     const collections: Collection[] = [
       { id: 'fav', name: 'Favorites', icon: 'heart', desc: '', query: 'favorites' },
     ];
     const res = filterBrowseCards(
-      [curatedA1, favImport],
+      [cardApple, favCard],
       DECKS,
       collections,
       makeOpts({ collectionId: 'fav' }),
       NOW,
     );
-    expect(ids(res)).toEqual(['fav-import']);
+    expect(ids(res)).toEqual(['fav-card']);
+  });
+});
+
+describe('filterBrowseCards — free-text search over front/back/example/notes/tags', () => {
+  it('matches by front', () => {
+    expect(ids(filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'apple' }), NOW))).toEqual(['apple']);
+  });
+
+  it('matches by back', () => {
+    expect(ids(filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'feline' }), NOW))).toEqual(['cat']);
+  });
+
+  it('matches by example', () => {
+    expect(ids(filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'crisp' }), NOW))).toEqual(['apple']);
+  });
+
+  it('matches by notes', () => {
+    expect(ids(filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'irregular' }), NOW))).toEqual(['run']);
+  });
+
+  it('matches by tag text', () => {
+    expect(ids(filterBrowseCards(ALL, DECKS, [], makeOpts({ q: 'animals' }), NOW))).toEqual(['cat']);
+  });
+});
+
+describe('filterBrowseCards — sort', () => {
+  it('sorts az by front', () => {
+    const res = filterBrowseCards(ALL, DECKS, [], makeOpts({ sort: 'az' }), NOW);
+    expect(res.map((c) => c.front)).toEqual(['apple', 'cat', 'run']);
   });
 });
 
 describe('filterBrowseCards — purity', () => {
   it('does not mutate or reorder its input array', () => {
-    const input = [curatedB1, curatedA1, imported];
+    const input = [cardRun, cardApple, cardCat];
     const snapshot = [...input];
     filterBrowseCards(input, DECKS, [], makeOpts({ sort: 'az' }), NOW);
     expect(input).toEqual(snapshot);

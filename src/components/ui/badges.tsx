@@ -1,12 +1,12 @@
 /**
- * Badges & chips: CEFR level pills, part-of-speech pills, card-state
- * dots/badges, filter chips, the streak chip with freeze count, the deck flag
- * square, and the deck-provenance tile/tag (curated vs imported).
+ * Badges & chips: card-state dots/badges, filter chips, the streak chip with
+ * freeze count, the deck icon square, and the deck-provenance tile/tag (curated
+ * vs imported).
  */
 import React from 'react';
 import { Pressable, StyleProp, Text, View, ViewStyle } from 'react-native';
 
-import { CardState, CefrLevel, WordType } from '@/domain/types';
+import { CardState } from '@/domain/types';
 import { font, tnum } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
 
@@ -20,25 +20,6 @@ export const STATE_ICON: Record<CardState, string> = {
   mastered: 'checkmark-circle',
   due: 'time',
 };
-
-export function LevelBadge({ level, size = 11.5 }: { level: CefrLevel; size?: number }) {
-  const c = useColors();
-  const pair = c.cefr[level] ?? c.cefr.A1;
-  return (
-    <View
-      style={{
-        backgroundColor: pair.tint,
-        paddingVertical: 3,
-        paddingHorizontal: 8,
-        borderRadius: 999,
-      }}
-    >
-      <Text style={[font('sans', 800), { fontSize: size, color: pair.fg, letterSpacing: 0.1 }]}>
-        {level}
-      </Text>
-    </View>
-  );
-}
 
 export function StateDot({ state, size = 7 }: { state: CardState; size?: number }) {
   const c = useColors();
@@ -156,16 +137,6 @@ export function Pill({ children, fg, bg, mono, style }: PillProps) {
   );
 }
 
-/**
- * The card's part of speech, as a pill. Takes a NON-null WordType on purpose:
- * imported cards leave `type` null, so this mirrors LevelBadge on the level
- * axis — the compiler refuses an ungated `card.type`, keeping the empty-pill
- * regression from ever coming back.
- */
-export function TypePill({ type }: { type: WordType }) {
-  return <Pill>{type}</Pill>;
-}
-
 export function StreakChip({
   days,
   freezes = 0,
@@ -203,8 +174,8 @@ export function StreakChip({
   );
 }
 
-/** Deck identity square — flag emoji is data, not iconography. */
-export function FlagSq({ flag, size = 38 }: { flag: string; size?: number }) {
+/** Deck identity square — the icon emoji is data, not iconography. */
+export function IconSq({ icon, size = 38 }: { icon: string; size?: number }) {
   const c = useColors();
   return (
     <View
@@ -219,15 +190,15 @@ export function FlagSq({ flag, size = 38 }: { flag: string; size?: number }) {
         justifyContent: 'center',
       }}
     >
-      <Text style={{ fontSize: size * 0.5 }}>{flag}</Text>
+      <Text style={{ fontSize: size * 0.5 }}>{icon}</Text>
     </View>
   );
 }
 
 /* ----------------------------------------------------------- deck provenance */
 // Single source of truth for "curated vs imported", shown on every deck surface
-// (Home, Study, peek). Driven by deck.builtin, NOT the flag emoji: AnkiWeb
-// imports keep a country flag, so the emoji can't signal origin. The map carries
+// (Home, Study, peek). Driven by deck.builtin, NOT the icon emoji: imports can
+// carry any emoji, so the emoji can't signal origin. The map carries
 // the entire role — glyph, label, and the fg/bg color KEYS — so DeckTag and
 // DeckTile resolve identical visuals via useColors() and can't drift apart.
 // Curated reads pine (the brand); imported reads info-blue. Glyphs: leaf
@@ -245,7 +216,11 @@ const PROVENANCE = {
  */
 export function DeckTag({ builtin }: { builtin: boolean }) {
   const c = useColors();
-  const p = builtin ? PROVENANCE.curated : PROVENANCE.imported;
+  // Provenance is a curated-catalog signal; a blank-slate app holds only the
+  // user's own decks, so a plain created/imported deck earns no tag — only a
+  // builtin (curated) deck does. (Avoids mislabeling every deck "Imported".)
+  if (!builtin) return null;
+  const p = PROVENANCE.curated;
   const fg = c[p.fg];
   const bg = c[p.bg];
   return (
@@ -270,19 +245,19 @@ export function DeckTag({ builtin }: { builtin: boolean }) {
 }
 
 /**
- * Deck identity tile = flag square + a provenance seal in the corner. The seal
+ * Deck identity tile = icon square + a provenance seal in the corner. The seal
  * is the glanceable half (no text needed). `ring` should match the surface
  * BEHIND the tile so the seal reads as a sticker — paper on list rows (default),
  * surface inside a sheet.
  */
 export function DeckTile({
-  flag,
+  icon,
   builtin,
   size = 38,
   ring,
   seal = true,
 }: {
-  flag: string;
+  icon: string;
   builtin: boolean;
   size?: number;
   ring?: string;
@@ -290,13 +265,14 @@ export function DeckTile({
 }) {
   const c = useColors();
   const d = Math.max(15, Math.round(size * 0.44));
-  const p = builtin ? PROVENANCE.curated : PROVENANCE.imported;
+  const p = PROVENANCE.curated;
   const fg = c[p.fg];
   const bg = c[p.bg];
   return (
     <View style={{ width: size, height: size }}>
-      <FlagSq flag={flag} size={size} />
-      {seal && (
+      <IconSq icon={icon} size={size} />
+      {/* Seal marks a curated (builtin) deck only — user decks show a bare icon. */}
+      {seal && builtin && (
         <View
           style={{
             position: 'absolute',

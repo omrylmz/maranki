@@ -109,7 +109,6 @@ export interface AchievementContext {
   cards: Card[];
   sessions: SessionRecord[];
   masteredCount: number;
-  languagesStudied: number;
   fastAnswers: number;
 }
 
@@ -177,15 +176,6 @@ export const ACHIEVEMENT_DEFS: AchievementDef[] = [
     cat: 'Streak',
     goal: 30,
     progress: (c) => Math.max(c.person.streak, c.person.bestStreak),
-  },
-  {
-    id: 'polyglot',
-    name: 'Polyglot',
-    desc: 'Study three languages',
-    icon: 'globe',
-    cat: 'Study',
-    goal: 3,
-    progress: (c) => c.languagesStudied,
   },
 ];
 

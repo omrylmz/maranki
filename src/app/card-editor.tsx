@@ -1,17 +1,14 @@
 /**
- * Card editor (B9 + C4) — unsaved-changes guard on back, Save disabled
- * until valid, the surfaced Pronunciation section (IPA + record/playback —
- * recording itself is staged UI; the capture backend is WIRING.md C4 work),
+ * Card editor (B9) — unsaved-changes guard on back, Save disabled until valid,
  * and a guarded delete. Saves write the store for real.
  */
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import {
   Btn,
   Chip,
-  IconBtn,
   Field,
   Ion,
   ListRow,
@@ -20,16 +17,10 @@ import {
   SnackbarHost,
   StackBar,
 } from '@/components/ui';
-import { speakWord } from '@/domain/speech';
-import { CefrLevel, WordType } from '@/domain/types';
-import { langCode, splitArticle } from '@/domain/words';
 import { useData } from '@/store/DataContext';
 import { useSnackbar } from '@/store/SnackbarContext';
 import { font } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
-
-const LEVELS: CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
-const TYPES: WordType[] = ['noun', 'verb', 'adjective', 'adverb', 'phrase', 'preposition', 'conjunction'];
 
 export default function CardEditorScreen() {
   const c = useColors();
@@ -45,30 +36,24 @@ export default function CardEditorScreen() {
   const editing = !!card;
   const activeDecks = state.decks.filter((d) => d.active);
 
-  const [word, setWord] = useState(card?.word ?? '');
-  const [tr, setTr] = useState(card?.tr ?? '');
-  const [ex, setEx] = useState(card?.ex ?? '');
-  const [exTr, setExTr] = useState(card?.exTr ?? '');
-  const [ipa, setIpa] = useState(card?.ipa ?? '');
-  const [level, setLevel] = useState<CefrLevel | null>(card?.level ?? null);
-  const [type, setType] = useState<WordType | null>(card?.type ?? null);
+  const [front, setFront] = useState(card?.front ?? '');
+  const [back, setBack] = useState(card?.back ?? '');
+  const [example, setExample] = useState(card?.example ?? '');
+  const [notes, setNotes] = useState(card?.notes ?? '');
+  const [tags, setTags] = useState(card?.tags?.join(', ') ?? '');
   const [deck, setDeck] = useState(card?.deckId ?? params.deckId ?? activeDecks[0]?.id ?? '');
-  const [recorded, setRecorded] = useState(editing);
-  const [recording, setRecording] = useState(false);
   const [guard, setGuard] = useState(false);
   const [delConfirm, setDelConfirm] = useState(false);
 
   const dirty = editing
-    ? word !== card.word ||
-      tr !== card.tr ||
-      ex !== (card.ex ?? '') ||
-      exTr !== (card.exTr ?? '') ||
-      ipa !== (card.ipa ?? '') ||
-      level !== card.level ||
-      type !== card.type ||
+    ? front !== card.front ||
+      back !== card.back ||
+      example !== (card.example ?? '') ||
+      notes !== (card.notes ?? '') ||
+      tags !== (card.tags?.join(', ') ?? '') ||
       deck !== card.deckId
-    : !!(word || tr || ex || ipa);
-  const valid = word.trim().length > 0 && tr.trim().length > 0 && deck.length > 0;
+    : !!(front || back || example || notes || tags);
+  const valid = front.trim().length > 0 && back.trim().length > 0 && deck.length > 0;
 
   // The header back button is guarded below, but Android hardware-back and the
   // iOS edge-swipe slip past it and silently discard edits. `beforeRemove`
@@ -86,36 +71,25 @@ export default function CardEditorScreen() {
     return unsub;
   }, [navigation, dirty]);
 
-  const record = () => {
-    setRecording(true);
-    setTimeout(() => {
-      setRecording(false);
-      setRecorded(true);
-    }, 1500);
-  };
-
   const save = () => {
-    const { article, base } = splitArticle(word.trim());
-    const deckObj = state.decks.find((d) => d.id === deck);
+    const parsedTags = tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
     const fields = {
-      word: word.trim(),
-      article,
-      base,
-      tr: tr.trim(),
-      ex: ex.trim() || undefined,
-      exTr: exTr.trim() || undefined,
-      ipa: ipa.trim() || undefined,
-      level,
-      type,
+      front: front.trim(),
+      back: back.trim(),
+      example: example.trim() || undefined,
+      notes: notes.trim() || undefined,
+      tags: parsedTags.length ? parsedTags : undefined,
       deckId: deck,
-      lang: langCode(deckObj?.lang ?? 'German'),
     };
     if (editing) {
       actions.updateCard(card.id, fields);
       show('Card saved');
     } else {
       actions.addCard(deck, fields);
-      show(`“${word.trim()}” added`);
+      show(`“${front.trim()}” added`);
     }
     leaving.current = true; // intentional exit — don't let the guard intercept
     router.back();
@@ -151,8 +125,7 @@ export default function CardEditorScreen() {
               },
             ]}
           >
-            A card needs an active deck. Create one, add a curated deck from the Library, or resume a
-            paused deck under Study.
+            A card needs an active deck. Create one, or resume a paused deck under Study.
           </Text>
           <Btn icon="add" onPress={() => router.replace('/deck-editor')}>
             New deck
@@ -181,118 +154,38 @@ export default function CardEditorScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Field label="Word *" value={word} onChange={setWord} placeholder="die Stunde" autoFocus={!editing} />
-        <Field label="Translation *" value={tr} onChange={setTr} placeholder="the hour" />
+        <Field label="Front *" value={front} onChange={setFront} placeholder="Capital of France" autoFocus={!editing} />
+        <Field label="Back *" value={back} onChange={setBack} placeholder="Paris" />
         <Field
           label="Example"
-          value={ex}
-          onChange={setEx}
-          placeholder="Wir treffen uns in einer Stunde."
+          value={example}
+          onChange={setExample}
+          placeholder="Paris is the capital and largest city of France."
           multiline
-          hint="Shown in italic on the card back — real language, quoted."
+          hint="Shown in italic on the card back."
         />
         <Field
-          label="Example translation"
-          value={exTr}
-          onChange={setExTr}
-          placeholder="We meet in an hour."
+          label="Notes"
+          value={notes}
+          onChange={setNotes}
+          placeholder="Any extra context or a mnemonic"
+          multiline
+          hint="Small muted print beneath the answer."
+        />
+        <Field
+          label="Tags"
+          value={tags}
+          onChange={setTags}
+          placeholder="geography, europe"
+          hint="Separate tags with commas — used for filtering."
         />
 
-        {/* pronunciation — the surfaced subsystem (C4) */}
-        <Overline style={{ marginTop: 4, marginBottom: 7 }}>Pronunciation</Overline>
-        <View
-          style={{
-            backgroundColor: c.card,
-            borderWidth: 1,
-            borderColor: c.hairlineStrong,
-            borderRadius: 12,
-            paddingVertical: 12,
-            paddingHorizontal: 14,
-            marginBottom: 16,
-          }}
-        >
-          <TextInput
-            value={ipa}
-            onChangeText={setIpa}
-            placeholder="/ˈʃtʊndə/ (IPA, optional)"
-            placeholderTextColor={c.ink3}
-            autoCorrect={false}
-            style={[font('mono', 400), { fontSize: 14.5, color: c.ink, padding: 0 }]}
-          />
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 9,
-              marginTop: 12,
-              paddingTop: 12,
-              borderTopWidth: 1,
-              borderTopColor: c.hairlineSoft,
-            }}
-          >
-            {recording ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 9, height: 9, borderRadius: 99, backgroundColor: c.danger }} />
-                <Text style={[font('sans', 800), { fontSize: 13.5, color: c.danger }]}>
-                  Recording… tap to stop
-                </Text>
-              </View>
-            ) : recorded ? (
-              <>
-                <IconBtn
-                  icon="play"
-                  size={32}
-                  iconSize={15}
-                  color={c.pine}
-                  bg={c.pineTint}
-                  onPress={() => word && speakWord(word, langCode(state.decks.find((d) => d.id === deck)?.lang ?? 'German'))}
-                />
-                <Text style={[font('sans', 400), { flex: 1, fontSize: 13, color: c.ink2 }]}>
-                  Your recording · 0:02
-                </Text>
-                <Btn size="sm" kind="quiet" icon="mic-outline" onPress={record}>
-                  Re-record
-                </Btn>
-              </>
-            ) : (
-              <>
-                <Btn size="sm" kind="secondary" icon="mic-outline" onPress={record}>
-                  Record yourself
-                </Btn>
-                <Text style={[font('sans', 400), { flex: 1, fontSize: 12, color: c.ink3 }]}>
-                  compare with the native audio
-                </Text>
-              </>
-            )}
-          </View>
-        </View>
-
         <Overline style={{ marginTop: 4, marginBottom: 7 }}>Deck</Overline>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
           <View style={{ flexDirection: 'row', gap: 7 }}>
             {activeDecks.map((d) => (
               <Chip key={d.id} active={deck === d.id} onPress={() => setDeck(d.id)}>
-                {`${d.flag} ${d.name}`}
-              </Chip>
-            ))}
-          </View>
-        </ScrollView>
-
-        <Overline style={{ marginTop: 4, marginBottom: 7 }}>Level</Overline>
-        <View style={{ flexDirection: 'row', gap: 7, marginBottom: 16, flexWrap: 'wrap' }}>
-          {LEVELS.map((l) => (
-            <Chip key={l} active={level === l} onPress={() => setLevel(level === l ? null : l)}>
-              {l}
-            </Chip>
-          ))}
-        </View>
-
-        <Overline style={{ marginTop: 4, marginBottom: 7 }}>Type</Overline>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-          <View style={{ flexDirection: 'row', gap: 7 }}>
-            {TYPES.map((t) => (
-              <Chip key={t} active={type === t} onPress={() => setType(type === t ? null : t)}>
-                {t}
+                {`${d.icon} ${d.name}`}
               </Chip>
             ))}
           </View>
@@ -349,7 +242,7 @@ export default function CardEditorScreen() {
       {/* guarded delete (L6) — destructive, so it confirms before removing */}
       <Sheet open={delConfirm} onClose={() => setDelConfirm(false)} title="Delete this card?">
         <Text style={[font('sans', 400), { fontSize: 14.5, color: c.ink2, marginBottom: 18 }]}>
-          “{card?.word}” and its scheduling history will be permanently removed.
+          “{card?.front}” and its scheduling history will be permanently removed.
         </Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Btn kind="secondary" full style={{ flex: 1 }} onPress={() => setDelConfirm(false)}>
@@ -364,7 +257,7 @@ export default function CardEditorScreen() {
               setDelConfirm(false);
               leaving.current = true; // the card is gone — don't re-prompt on the way out
               actions.deleteCard(card.id);
-              show(`“${card.word}” deleted`);
+              show(`“${card.front}” deleted`);
               router.back();
             }}
           >

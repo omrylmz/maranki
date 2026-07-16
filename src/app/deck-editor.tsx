@@ -1,5 +1,5 @@
 /**
- * Deck editor (B9) — name/language/description, duplicate (real copy with
+ * Deck editor (B9) — name/icon/description, duplicate (real copy with
  * fresh progress), and the safe delete: keep / move (with a target picker) /
  * delete-all, each consequence spelled out. All writes are real.
  */
@@ -18,13 +18,12 @@ import {
   SnackbarHost,
   StackBar,
 } from '@/components/ui';
-import { LANG_FLAGS } from '@/domain/words';
 import { useData } from '@/store/DataContext';
 import { useSnackbar } from '@/store/SnackbarContext';
 import { font } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
 
-const LANGS = ['German', 'Spanish', 'French', 'Italian', 'Other'];
+const ICONS = ['🗂️', '📚', '🧠', '🔤', '🧮', '🌍', '🎯', '🎓', '⭐'];
 type DelMode = 'move' | 'keep' | 'all';
 
 export default function DeckEditorScreen() {
@@ -49,7 +48,7 @@ export default function DeckEditorScreen() {
   const canMove = otherDecks.length > 0;
 
   const [name, setName] = useState(deck?.name ?? '');
-  const [lang, setLang] = useState<string | null>(deck?.lang ?? null);
+  const [icon, setIcon] = useState(deck?.icon ?? '🗂️');
   const [desc, setDesc] = useState(deck?.desc ?? '');
   const [delOpen, setDelOpen] = useState(false);
   const [delMode, setDelMode] = useState<DelMode>(canMove ? 'move' : 'keep');
@@ -58,8 +57,7 @@ export default function DeckEditorScreen() {
   const save = () => {
     const fields = {
       name: name.trim(),
-      lang: lang ?? 'Other',
-      flag: LANG_FLAGS[lang ?? 'Other'] ?? '📚',
+      icon,
       desc: desc.trim() || undefined,
     };
     if (editing) {
@@ -77,22 +75,14 @@ export default function DeckEditorScreen() {
     const cards = state.cards
       .filter((x) => x.deckId === deck.id)
       .map((x) => ({
-        word: x.word,
-        article: x.article,
-        base: x.base,
-        tr: x.tr,
-        ipa: x.ipa,
-        ex: x.ex,
-        exTr: x.exTr,
-        level: x.level,
-        type: x.type,
-        lang: x.lang,
+        front: x.front,
+        back: x.back,
+        example: x.example,
+        notes: x.notes,
+        tags: x.tags,
         // fresh cards, no progress
       }));
-    actions.importDeck(
-      { name: `${deck.name} (copy)`, flag: deck.flag, lang: deck.lang, level: deck.level },
-      cards,
-    );
+    actions.importDeck({ name: `${deck.name} (copy)`, icon: deck.icon, desc: deck.desc }, cards);
     show(`Copied as “${deck.name} (copy)” — fresh cards, no progress`);
   };
 
@@ -164,19 +154,17 @@ export default function DeckEditorScreen() {
           label="Deck name *"
           value={name}
           onChange={setName}
-          placeholder="Spanish — Kitchen verbs"
+          placeholder="World capitals"
           autoFocus={!editing}
         />
-        <Overline style={{ marginTop: 4, marginBottom: 7 }}>Language</Overline>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row', gap: 7 }}>
-            {LANGS.map((l) => (
-              <Chip key={l} active={lang === l} onPress={() => setLang(l)}>
-                {`${LANG_FLAGS[l]} ${l}`}
-              </Chip>
-            ))}
-          </View>
-        </ScrollView>
+        <Overline style={{ marginTop: 4, marginBottom: 7 }}>Icon</Overline>
+        <View style={{ flexDirection: 'row', gap: 7, marginBottom: 16, flexWrap: 'wrap' }}>
+          {ICONS.map((ic) => (
+            <Chip key={ic} active={icon === ic} onPress={() => setIcon(ic)}>
+              {ic}
+            </Chip>
+          ))}
+        </View>
         <Field
           label="Description"
           value={desc}
@@ -249,7 +237,7 @@ export default function DeckEditorScreen() {
                 <View style={{ flexDirection: 'row', gap: 7, paddingLeft: 32 }}>
                   {otherDecks.map((d) => (
                     <Chip key={d.id} active={moveTarget === d.id} onPress={() => setMoveTarget(d.id)}>
-                      {`${d.flag} ${d.name}`}
+                      {`${d.icon} ${d.name}`}
                     </Chip>
                   ))}
                 </View>

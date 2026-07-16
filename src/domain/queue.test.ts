@@ -34,13 +34,8 @@ const noneDone: DayDone = { dayKey: 'k', reviews: 0, neww: 0 };
 function makeCard(o: Partial<Card> & Pick<Card, 'id'>): Card {
   return {
     deckId: 'd1',
-    word: 'word',
-    article: null,
-    base: 'word',
-    tr: 'translation',
-    level: null,
-    type: null,
-    lang: 'de',
+    front: 'front',
+    back: 'back',
     ease: 2.5,
     intervalDays: 0,
     stepIndex: null,
@@ -54,7 +49,7 @@ function makeCard(o: Partial<Card> & Pick<Card, 'id'>): Card {
 }
 
 function makeDeck(o: Partial<Deck> & Pick<Deck, 'id' | 'name'>): Deck {
-  return { flag: '🏳️', lang: 'de', level: null, builtin: false, active: true, createdAt: 0, ...o };
+  return { icon: '🗂️', builtin: false, active: true, createdAt: 0, ...o };
 }
 
 /* Card archetypes (deck 'd1' by default). */

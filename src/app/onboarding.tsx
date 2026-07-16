@@ -1,23 +1,17 @@
 /**
- * Onboarding — language first (F1). Four data-driven steps, a persistent
- * skip, and an exit that lands the learner in a state matching their
- * choices: the picked language's decks activate, goals persist, and
- * "Start learning" drops straight into the first session.
+ * Onboarding: a warm first run of three steps (welcome, goals, ready) with a
+ * persistent skip. Finishing saves the goals and lands the learner on Home to
+ * add a first deck. Blank slate: nothing is seeded.
  */
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Btn, CardBox, FlagSq, Ion, RiseIn, Row, Stepper } from '@/components/ui';
-import { CURATED_LANGUAGES } from '@/domain/deckCatalog';
+import { Btn, CardBox, Ion, RiseIn, Row, Stepper } from '@/components/ui';
 import { useData } from '@/store/DataContext';
 import { font } from '@/theme/tokens';
 import { useColors } from '@/theme/ThemeContext';
-
-/** Languages offered at onboarding come straight from the curated catalog, so
- *  shipping a new language surfaces it here automatically. */
-const LANG_OPTIONS = CURATED_LANGUAGES.map((g) => ({ flag: g.flag, name: g.deckLang }));
 
 export default function OnboardingScreen() {
   const c = useColors();
@@ -26,59 +20,32 @@ export default function OnboardingScreen() {
   const { actions } = useData();
 
   const [step, setStep] = useState(0);
-  const [lang, setLang] = useState<string | null>(null);
   const [neww, setNeww] = useState(10);
   const [reviews, setReviews] = useState(30);
 
   const mins = Math.max(2, Math.round(((neww + reviews) * 10) / 60));
 
-  /* honest per-language inventory straight from the curated catalog — decks
-     aren't seeded, they're materialized when the learner picks a language */
-  const langMeta = useMemo(() => {
-    const meta: Record<string, string> = {};
-    CURATED_LANGUAGES.forEach((g) => {
-      const count = g.decks.reduce((n, d) => n + d.specs.length, 0);
-      const levels = [...new Set(g.decks.map((d) => d.level).filter(Boolean))].join('–');
-      meta[g.deckLang] = `${count} cards${levels ? ` · ${levels}` : ''}`;
-    });
-    return meta;
-  }, []);
-
   const applyChoices = () => {
     actions.setGoals(reviews, neww);
     actions.updateSrsSettings({ dailyNewLimit: neww, dailyReviewLimit: Math.max(reviews, 30) });
-    if (lang) {
-      // Materialize the chosen language's curated decks (idempotent add) — the
-      // one place a fresh install gains decks without an explicit "Add".
-      const group = CURATED_LANGUAGES.find((g) => g.deckLang === lang);
-      group?.decks.forEach((d) => actions.addCatalogDeck(d.id));
-    }
     actions.markOnboarded();
   };
 
-  const finishToHome = () => {
+  const finish = () => {
     applyChoices();
-    router.back();
-  };
-
-  const startLearning = () => {
-    applyChoices();
-    router.replace({
-      pathname: '/session',
-      params: { kind: 'scheduled', label: lang ? `${lang} decks` : 'All decks' },
-    });
+    // Blank slate: no decks are seeded, so there is no session to jump into.
+    // Land on Home: router.replace('/(tabs)') targets the tab group's default
+    // (index = Home) deterministically, whereas router.back() would reveal
+    // whichever tab happened to sit under the pushed onboarding route.
+    router.replace('/(tabs)');
   };
 
   const skip = () => {
-    // Honor a language already chosen — skipping setup shouldn't silently
-    // discard the pick and strand the learner on an empty app. applyChoices()
-    // also marks onboarded; with no pick, we just mark and leave.
-    if (lang) applyChoices();
-    else actions.markOnboarded();
+    actions.markOnboarded();
     router.back();
   };
 
-  const next = () => (step < 3 ? setStep(step + 1) : finishToHome());
+  const next = () => (step < 2 ? setStep(step + 1) : finish());
 
   const stepBody = [
     /* 0 — welcome */
@@ -98,16 +65,16 @@ export default function OnboardingScreen() {
             { fontSize: 19, color: c.ink2, marginTop: 10, marginBottom: 30 },
           ]}
         >
-          Learn words. Keep them.
+          Learn anything. Keep it.
         </Text>
       </View>
       <CardBox>
         {(
           [
-            ['albums-outline', 'Study a few cards a day', 'Short sessions, real sentences.'],
+            ['albums-outline', 'Study a few cards a day', 'Short sessions that fit your day.'],
             [
               'repeat',
-              'We bring each word back',
+              'We bring each card back',
               'Just before you’d forget it — that’s spaced repetition.',
             ],
             ['flame', 'Streaks make it stick', 'A little every day beats a lot once a week.'],
@@ -147,71 +114,7 @@ export default function OnboardingScreen() {
       </CardBox>
     </RiseIn>,
 
-    /* 1 — language first */
-    <RiseIn key="l" duration={300}>
-      <Text
-        style={[
-          font('serif', 600),
-          { fontSize: 26, lineHeight: 30, color: c.ink, marginTop: 24, marginBottom: 6 },
-        ]}
-      >
-        What do you want to learn?
-      </Text>
-      <Text style={[font('sans', 400), { fontSize: 14, color: c.ink2, marginBottom: 20 }]}>
-        We’ll set up the right decks for you.
-      </Text>
-      {LANG_OPTIONS.map(({ flag, name }) => (
-        <Pressable
-          key={name}
-          onPress={() => setLang(name)}
-          style={({ pressed }) => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 13,
-            paddingVertical: 13,
-            paddingHorizontal: 15,
-            marginBottom: 10,
-            backgroundColor: lang === name ? c.pineTint : c.card,
-            borderRadius: 14,
-            borderWidth: lang === name ? 1.5 : 1,
-            borderColor: lang === name ? c.pine : c.hairline,
-            transform: [{ scale: pressed ? 0.985 : 1 }],
-          })}
-        >
-          <FlagSq flag={flag} size={40} />
-          <View style={{ flex: 1 }}>
-            <Text style={[font('sans', 800), { fontSize: 16, color: c.ink }]}>{name}</Text>
-            <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink3 }]}>
-              {langMeta[name]}
-            </Text>
-          </View>
-          {lang === name && <Ion name="checkmark-circle" size={22} color={c.pine} />}
-        </Pressable>
-      ))}
-      <Pressable
-        onPress={() => router.push('/import')}
-        style={({ pressed }) => ({
-          borderWidth: 1.5,
-          borderStyle: 'dashed',
-          borderColor: c.hairlineStrong,
-          borderRadius: 14,
-          paddingVertical: 13,
-          paddingHorizontal: 15,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          opacity: pressed ? 0.7 : 1,
-        })}
-      >
-        <Ion name="cloud-download-outline" size={17} color={c.ink2} />
-        <Text style={[font('sans', 700), { fontSize: 14, color: c.ink2 }]}>
-          Or import your own deck
-        </Text>
-      </Pressable>
-    </RiseIn>,
-
-    /* 2 — goals */
+    /* 1 — goals */
     <RiseIn key="g" duration={300}>
       <Text style={[font('serif', 600), { fontSize: 28, color: c.ink, marginTop: 24, marginBottom: 4 }]}>
         A pace you can keep
@@ -223,10 +126,10 @@ export default function OnboardingScreen() {
         <Row padV={12}>
           <View style={{ flex: 1 }}>
             <Text style={[font('sans', 700), { fontSize: 14.5, color: c.ink }]}>
-              New words a day
+              New cards a day
             </Text>
             <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink3 }]}>
-              Fresh vocabulary entering rotation
+              Fresh cards entering rotation
             </Text>
           </View>
           <Stepper value={neww} onChange={setNeww} min={5} max={50} step={5} />
@@ -235,7 +138,7 @@ export default function OnboardingScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[font('sans', 700), { fontSize: 14.5, color: c.ink }]}>Reviews a day</Text>
             <Text style={[font('sans', 400), { fontSize: 12.5, color: c.ink3 }]}>
-              Words coming back to be kept
+              Cards coming back to be kept
             </Text>
           </View>
           <Stepper value={reviews} onChange={setReviews} min={10} max={200} step={10} />
@@ -258,7 +161,7 @@ export default function OnboardingScreen() {
       </View>
     </RiseIn>,
 
-    /* 3 — ready */
+    /* 2 — ready */
     <RiseIn key="r" duration={300}>
       <View style={{ alignItems: 'center' }}>
         <View
@@ -281,7 +184,7 @@ export default function OnboardingScreen() {
             { fontSize: 28, lineHeight: 33, color: c.ink, marginBottom: 8, textAlign: 'center' },
           ]}
         >
-          {lang ?? 'German'}, {neww} new words a day.
+          {neww} new cards a day.
         </Text>
         <Text
           style={[
@@ -295,8 +198,8 @@ export default function OnboardingScreen() {
             },
           ]}
         >
-          Your first session is ready — {neww} words, about{' '}
-          {Math.max(2, Math.round((neww * 10) / 60))} minutes. Day one of your streak starts now.
+          About {Math.max(2, Math.round((neww * 10) / 60))} minutes a day. Add a deck from your
+          library to begin, and your streak starts on day one.
         </Text>
       </View>
     </RiseIn>,
@@ -315,7 +218,7 @@ export default function OnboardingScreen() {
         }}
       >
         <View style={{ flexDirection: 'row', gap: 6 }}>
-          {[0, 1, 2, 3].map((i) => (
+          {[0, 1, 2].map((i) => (
             <View
               key={i}
               style={{
@@ -341,12 +244,12 @@ export default function OnboardingScreen() {
       </ScrollView>
 
       <View style={{ paddingHorizontal: 22, paddingTop: 14, paddingBottom: insets.bottom + 30 }}>
-        {step === 3 ? (
-          <Btn full size="lg" icon="play" onPress={startLearning}>
-            Start learning
+        {step === 2 ? (
+          <Btn full size="lg" icon="arrow-forward" onPress={finish}>
+            Get started
           </Btn>
         ) : (
-          <Btn full size="lg" onPress={next} disabled={step === 1 && !lang}>
+          <Btn full size="lg" onPress={next}>
             Continue
           </Btn>
         )}

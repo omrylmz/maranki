@@ -13,9 +13,7 @@
  * Field HTML is stripped to plain text (Anki fields are HTML; Maranki cards are
  * plain). Hermes-safe: no String.normalize / replaceAll / lookbehind.
  */
-import { clampLevel } from './importFile';
 import { ImportCardPayload } from './importSamples';
-import { splitArticle } from './words';
 
 /** Unit Separator that joins Anki field values inside `notes.flds`. */
 export const FIELD_SEP = '\x1f';
@@ -250,14 +248,12 @@ export function stripHtml(input: string): string {
 // start of a name beginning with a non-ASCII letter (e.g. "Übersetzung", which a
 // plain \b never matched). `back(?![a-z])` keeps a bare "Back" field but stops it
 // stealing "Background"/"Backstory".
-// Field-role names cover EN/DE plus common ES/FR/IT labels; when none match, the
-// positional fallback below still maps front/back, so an unknown-language deck
-// is never mis-imported, just less precisely (M12).
-const WORD_RE = /(?:^|[^a-z0-9])(word|wort|front|vorderseite|begriff|term|termino|término|terme|expression|expresion|expresión|frage|question|prompt|headword|lemma|vocab|palabra|mot|parola|vocabolo)/i;
-const TR_RE = /(?:^|[^a-z0-9])(translation|traduccion|traducción|traduction|traduzione|ubersetzung|übersetzung|meaning|significado|significato|signification|bedeutung|back(?![a-z])|ruckseite|rückseite|definition|definicion|definición|answer|antwort|respuesta|reponse|réponse|risposta|output|english|gloss|sense|sentido|senso)/i;
+// Role names cover EN/DE plus common ES/FR/IT labels for import robustness; when
+// none match, the positional fallback below still maps front/back, so a deck with
+// unrecognised field names is never mis-imported, just less precisely (M12).
+const FRONT_RE = /(?:^|[^a-z0-9])(word|wort|front|vorderseite|begriff|term|termino|término|terme|expression|expresion|expresión|frage|question|prompt|headword|lemma|vocab|palabra|mot|parola|vocabolo)/i;
+const BACK_RE = /(?:^|[^a-z0-9])(translation|traduccion|traducción|traduction|traduzione|ubersetzung|übersetzung|meaning|significado|significato|signification|bedeutung|back(?![a-z])|ruckseite|rückseite|definition|definicion|definición|answer|antwort|respuesta|reponse|réponse|risposta|output|english|gloss|sense|sentido|senso)/i;
 const EX_RE = /(?:^|[^a-z0-9])(example|ejemplo|exemple|esempio|beispiel|satz|sentence|frase|phrase|oracion|oración|usage|context|contexto|sample)/i;
-const LEVEL_RE = /(?:^|[^a-z0-9])(level|niveau|cefr|stufe|grade)/i;
-const IPA_RE = /(?:^|[^a-z0-9])(ipa|pronunciation|aussprache|phonetic|reading|romaji|pinyin)/i;
 
 /** First field index whose name matches `re` and isn't already taken. */
 function findField(names: string[], re: RegExp, taken: Set<number>): number {
@@ -279,8 +275,8 @@ function firstFilled(values: string[], taken: Set<number>): number {
  * Map one Anki note to card payload(s) using its model's field names. A cloze
  * note yields ONE CARD PER cloze number (matching Anki); a normal note yields a
  * single card, or none when no usable front survives. `model` may be undefined
- * (unknown mid) → positional fallback. Words are split into article/base so a
- * German article renders de-emphasised, exactly like the CSV path (L16/L17).
+ * (unknown mid) → positional fallback. Fields map to front/back/example by name,
+ * else positionally.
  */
 export function mapAnkiNote(
   flds: string,
@@ -306,12 +302,11 @@ export function mapAnkiNote(
     const exRaw = ci >= 0 ? stripHtml(values[ci] || '') : '';
     const cards: ImportCardPayload[] = [];
     for (const k of clozeNumbers(src)) {
-      const { front, back } = clozeCard(src, k);
-      const word = stripHtml(front);
-      if (word === '') continue;
-      const { article, base } = splitArticle(word);
-      const card: ImportCardPayload = { word, article, base, tr: stripHtml(back), level: null, type: null };
-      if (exRaw) card.ex = exRaw;
+      const { front: rawFront, back: rawBack } = clozeCard(src, k);
+      const front = stripHtml(rawFront);
+      if (front === '') continue;
+      const card: ImportCardPayload = { front, back: stripHtml(rawBack) };
+      if (exRaw) card.example = exRaw;
       if (cardTags.length) card.tags = cardTags;
       cards.push(card);
     }
@@ -320,52 +315,41 @@ export function mapAnkiNote(
 
   const taken = new Set<number>();
 
-  // word (front): named match, else positional field 0; if that strips to empty
+  // front: named match, else positional field 0; if that strips to empty
   // (a media-only [sound:]/<img> field or a blank), salvage the first field with
   // real content before giving up — a media-first note isn't malformed.
-  let wi = findField(names, WORD_RE, taken);
+  let wi = findField(names, FRONT_RE, taken);
   if (wi < 0) wi = 0;
-  let word = stripHtml(values[wi] || '');
-  if (word === '') {
+  let front = stripHtml(values[wi] || '');
+  if (front === '') {
     const alt = firstFilled(values, new Set([wi]));
     if (alt >= 0) {
       wi = alt;
-      word = stripHtml(values[alt] || '');
+      front = stripHtml(values[alt] || '');
     }
   }
-  if (word === '') return []; // genuinely empty note: skip
+  if (front === '') return []; // genuinely empty note: skip
   taken.add(wi);
 
-  // Reserve the NAMED translation/example/ipa/level roles BEFORE the translation
-  // fallback, so firstFilled() can't steal a recognizable Example/Level/IPA field
-  // as the back. Reserving the translation index first also stops a field that
-  // matches two roles (e.g. "Answer example") being assigned twice.
-  const ti0 = findField(names, TR_RE, taken);
+  // Reserve the NAMED back/example roles BEFORE the back fallback, so
+  // firstFilled() can't steal a recognizable Example field as the back. Reserving
+  // the back index first also stops a field that matches two roles (e.g. "Answer
+  // example") being assigned twice.
+  const ti0 = findField(names, BACK_RE, taken);
   if (ti0 >= 0) taken.add(ti0);
   const ei = findField(names, EX_RE, taken);
   if (ei >= 0) taken.add(ei);
-  const ii = findField(names, IPA_RE, taken);
-  if (ii >= 0) taken.add(ii);
-  const li = findField(names, LEVEL_RE, taken);
-  if (li >= 0) taken.add(li);
 
-  // translation: the named field, else the first remaining filled field.
+  // back: the named field, else the first remaining filled field.
   let ti = ti0;
   if (ti < 0) ti = firstFilled(values, taken);
 
-  const { article, base } = splitArticle(word);
   const card: ImportCardPayload = {
-    word,
-    article,
-    base,
-    tr: ti >= 0 ? stripHtml(values[ti] || '') : '',
-    level: li >= 0 ? clampLevel(stripHtml(values[li] || '')) : null,
-    type: null,
+    front,
+    back: ti >= 0 ? stripHtml(values[ti] || '') : '',
   };
-  const ex = ei >= 0 ? stripHtml(values[ei] || '') : '';
-  const ipa = ii >= 0 ? stripHtml(values[ii] || '') : '';
-  if (ex) card.ex = ex;
-  if (ipa) card.ipa = ipa;
+  const example = ei >= 0 ? stripHtml(values[ei] || '') : '';
+  if (example) card.example = example;
   if (cardTags.length) card.tags = cardTags;
   return [card];
 }

@@ -364,7 +364,6 @@ export default function SettingsScreen() {
       )}
 
       {(match('learning', 'study', 'goals', 'daily', 'mode', 'hints') ||
-        match('language') ||
         match('reminders', 'notifications')) && (
         <View>
           <SectionHead>Learning</SectionHead>
@@ -376,14 +375,6 @@ export default function SettingsScreen() {
                 s.studyMode === 'flash' ? 'flashcards' : s.studyMode
               } · hints ${s.hintsEnabled ? 'on' : 'off'}`}
               onPress={() => setDrill('study')}
-            />
-          )}
-          {match('language') && (
-            <ListRow
-              icon="globe-outline"
-              title="Languages"
-              sub="Interface English · learning German & Spanish"
-              onPress={() => show('Language picker')}
             />
           )}
           {match('reminders', 'notifications') && (
@@ -408,31 +399,18 @@ export default function SettingsScreen() {
         </View>
       )}
 
-      {match('pronunciation', 'audio', 'speech', 'freeze', 'streak') && (
+      {match('read', 'aloud', 'audio', 'speech', 'freeze', 'streak') && (
         <View>
-          <SectionHead>Habit & speech</SectionHead>
-          {match('pronunciation', 'audio', 'speech') && (
-            <ListRow
-              icon="mic-outline"
-              title="Pronunciation practice"
-              sub="Prompt on hard cards"
-              right={
-                <Toggle
-                  on={s.pronunciationPrompt}
-                  onChange={(v) => actions.updateAppSettings({ pronunciationPrompt: v })}
-                />
-              }
-            />
-          )}
-          {match('audio', 'speech') && (
+          <SectionHead>Habit & audio</SectionHead>
+          {match('read', 'aloud', 'audio', 'speech') && (
             <ListRow
               icon="volume-high-outline"
-              title="Auto-play audio"
-              sub="Speak the word on reveal"
+              title="Read aloud"
+              sub="Speak each card as it appears"
               right={
                 <Toggle
-                  on={s.autoPlayAudio}
-                  onChange={(v) => actions.updateAppSettings({ autoPlayAudio: v })}
+                  on={s.readAloudEnabled}
+                  onChange={(v) => actions.updateAppSettings({ readAloudEnabled: v })}
                 />
               }
             />
