@@ -1713,7 +1713,8 @@ describe('scripts and the release workflow', () => {
     expect(yml).toMatch(/variant: \[generic\]/);
     expect(yml).toMatch(/APP_VARIANT: \$\{\{ matrix\.variant \}\}/);
     expect(yml).toContain('maranki-${TAG}.apk');
-    expect(yml).not.toContain('maranki-german-${TAG}.apk');
+    // No .apk file name that contains "german", in any letter case (\b: a deck name like X.apkg does not count).
+    expect(yml).not.toMatch(/german[^\s'"]*\.apk\b/i);
     expect(yml).not.toMatch(/variant: \[[^\]]*german/);
   });
 });

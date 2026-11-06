@@ -2120,7 +2120,7 @@ Part of speech cannot be derived reliably in app code. If the German Type/Gender
 - Goal: Fold the German fork back in as a build variant + content pack, upgradeable in place.
 - Files: `app.config.ts`, `src/variants/german/pack.ts`, `src/variants/german/pack.test.ts`, `assets/packs/german/German_Vocabulary.apkg`, `assets/packs/german/German_Grammar.apkg`, `assets/packs/german/German_Verbs.apkg`, `assets/packs/german/icon.png`, `.github/workflows/release-apk.yml`, `RELEASING.md`, `package.json`.
 - Depends on: W3-8, W4-1, W4-5, W4-6.
-- Acceptance: §9.4; `pack.test.ts` (interface; unique keys; presets match the real card-type names in the anki fixtures; Grammar Question is `en-US`); `APP_VARIANT=german npx expo export -p android` contains the 3 `.apkg`, the generic export contains none; CI matrix produces `maranki-${TAG}.apk` and `maranki-german-${TAG}.apk`; scripts `start:german`, `android:german`; `RELEASING.md` variant + signing steps. Emulator **E12** (fresh install and in-place upgrade over the fork with the same key).
+- Acceptance: §9.4; `pack.test.ts` (interface; unique keys; presets match the real card-type names in the anki fixtures; Grammar Question is `en-US`); `APP_VARIANT=german npx expo export -p android` contains the 3 `.apkg`, the generic export contains none; CI builds only the generic `maranki-${TAG}.apk` *(final pass: the German APK is built on the author's computer)*; scripts `start:german`, `android:german`; `RELEASING.md` variant + signing steps. Emulator **E12** (fresh install and in-place upgrade over the fork with the same key).
 
 **W5-2 · Lock-in: required labels and guard tests**
 - Goal: Make the rules permanent: required accessibility labels and guard tests against fake controls and stray counts.
