@@ -1,16 +1,11 @@
 {
   "expo": {
-    "name": "Maranki",
-    "slug": "maranki",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "maranki",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#F4F0E7",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.omrylmz.maranki",
       "icon": {
         "light": "./assets/images/icon.png",
         "dark": "./assets/images/icon-dark.png",
@@ -24,8 +19,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.omrylmz.maranki"
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
@@ -44,7 +38,18 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#136F63"
+        }
+      ],
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

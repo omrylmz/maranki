@@ -6,15 +6,16 @@
  */
 import { describe, expect, it } from '@jest/globals';
 
-import { Card, displayState, lifecycleState } from './types';
+import { Card, displayState, isDue, lifecycleState } from './types';
 
 const NOW = 1_700_000_000_000;
 
 function makeCard(o: Partial<Card> & Pick<Card, 'id'>): Card {
   return {
+    noteId: 'n',
     deckId: 'd',
-    front: 'front',
-    back: 'back',
+    ord: 0,
+    newPos: NOW,
     ease: 2.5,
     intervalDays: 0,
     stepIndex: null,
@@ -65,5 +66,14 @@ describe('displayState honours buriedUntil (L13)', () => {
   it('an unburied overdue card still reads "due"', () => {
     const card = makeCard({ id: 'd', reps: 5, stepIndex: null, intervalDays: 10, due: NOW - 1000 });
     expect(displayState(card, NOW)).toBe('due');
+  });
+});
+
+describe('a Known card is never due (W3-1: the live Card is the v3 one)', () => {
+  it('isDue and displayState skip a Known card, like isDueNow in life.ts', () => {
+    const known = makeCard({ id: 'k', reps: 5, stepIndex: null, intervalDays: 10, due: NOW - 1000, knownAt: NOW - 1 });
+    expect(isDue(known, NOW)).toBe(false);
+    expect(displayState(known, NOW)).toBe('review');
+    expect(isDue({ ...known, knownAt: null }, NOW)).toBe(true);
   });
 });

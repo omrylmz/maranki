@@ -3,6 +3,17 @@
  * accent for the action. `SnackbarView` is the pure visual; `SnackbarHost`
  * renders the global channel. Full-screen overlays (session, editors,
  * import) mount their own host because native modals cover the root one.
+ *
+ * Where it sits: `bottom` (the screens: above the tab bar or the bottom
+ * edge) or `top` (a sheet's panel, CardSheet: at the top of the panel, so
+ * it never covers the sheet's last rows, like "Delete card…" — walkthrough
+ * M5). How long it stays is decided by the channel (SnackbarContext
+ * `snackDurationMs`: an Undo stays at least 5 s, longer with a screen
+ * reader).
+ *
+ * Accessibility: the bar is a polite live region (TalkBack reads a new
+ * message without moving the focus) and its action is a button with its
+ * own label ("Undo").
  */
 import React, { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
@@ -18,10 +29,13 @@ interface SnackbarViewProps {
   text: string;
   actionLabel?: string;
   onAction?: () => void;
-  bottom: number;
+  /** Distance from the bottom of the parent. Used when `top` is not given. */
+  bottom?: number;
+  /** Distance from the top of the parent: the bar sits at the top (a sheet's panel). Wins over `bottom`. */
+  top?: number;
 }
 
-export function SnackbarView({ text, actionLabel, onAction, bottom }: SnackbarViewProps) {
+export function SnackbarView({ text, actionLabel, onAction, bottom = 0, top }: SnackbarViewProps) {
   const c = useColors();
   const [rise] = useState(() => new Animated.Value(0));
 
@@ -35,17 +49,20 @@ export function SnackbarView({ text, actionLabel, onAction, bottom }: SnackbarVi
     }).start();
   }, [text, rise]);
 
+  const atTop = top !== undefined;
   return (
     <Animated.View
       pointerEvents="box-none"
+      accessibilityLiveRegion="polite"
       style={{
         position: 'absolute',
         left: 16,
         right: 16,
-        bottom,
+        ...(atTop ? { top } : { bottom }),
         zIndex: 70,
         opacity: rise,
-        transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+        // It slides in from the edge it sits at: up from below, or down from above.
+        transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [atTop ? -10 : 10, 0] }) }],
       }}
     >
       <View
@@ -70,6 +87,8 @@ export function SnackbarView({ text, actionLabel, onAction, bottom }: SnackbarVi
           <Pressable
             onPress={onAction}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel ?? 'Undo'}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
           >
             <Ion name="arrow-undo" size={14} color={c.inverseAccent} />

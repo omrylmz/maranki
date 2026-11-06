@@ -1,9 +1,14 @@
 /**
  * Entrance motion: fade + short rise (8–12px), the design's standard enter.
- * Honors OS reduced-motion (transitions become instant).
+ * Honors OS reduced-motion (spec §8.12): with Reduce Motion on, the content
+ * renders at once — no fade, no rise, no pop. The value comes from
+ * useReduceMotion(), which also follows a change of the setting while the
+ * app runs.
  */
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, StyleProp, ViewStyle } from 'react-native';
+import { Animated, Easing, StyleProp, ViewStyle } from 'react-native';
+
+import { useReduceMotion } from '@/store/useReduceMotion';
 
 interface RiseInProps {
   children: React.ReactNode;
@@ -23,15 +28,13 @@ export function RiseIn({
   style,
   kind = 'rise',
 }: RiseInProps) {
-  const [anim] = useState(() => new Animated.Value(0));
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduced);
-  }, []);
+  const reduced = useReduceMotion();
+  // Already reduced on the first render → start at the end (shown at once).
+  const [anim] = useState(() => new Animated.Value(reduced ? 1 : 0));
 
   useEffect(() => {
     if (reduced) {
+      anim.stopAnimation();
       anim.setValue(1);
       return;
     }

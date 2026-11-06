@@ -41,8 +41,10 @@
 
   --ink:          #211E1A;  /* primary text — warm near-black */
   --ink-2:        #5B554B;  /* secondary text, labels */
-  --ink-3:        #8B8478;  /* muted text, hints, placeholders */
-  --ink-on-color: #FBF8F2;  /* text on saturated fills */
+  --ink-3:        #6C665B;  /* muted text, hints, placeholders (≥ 4.5:1 on paper; was #8B8478, 3.26:1) */
+  --ink-on-color: #FBF8F2;  /* text on the pine fill */
+  --ink-on-amber: #211E1A;  /* text on the amber fill (white was 2.7:1) */
+  --ink-on-danger: #FFFFFF; /* text on the red fill */
 
   --hairline:        #E4DDCD;  /* default borders, dividers */
   --hairline-strong: #D6CCB6;  /* emphasized borders */
@@ -195,8 +197,10 @@
 
   --ink:          #F1EADD;  /* warm off-white */
   --ink-2:        #C2B9A7;
-  --ink-3:        #8E8676;
-  --ink-on-color: #FBF8F2;
+  --ink-3:        #978F7F;  /* was #8E8676 (4.21:1 on a card) */
+  --ink-on-color: #1C1916;  /* dark ink on the bright pine (white was 2.93:1) */
+  --ink-on-amber: #1C1916;
+  --ink-on-danger: #1C1916; /* white was 3.6:1 on the evening red */
 
   --hairline:        #38322A;
   --hairline-strong: #4A4338;

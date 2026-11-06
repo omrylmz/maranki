@@ -1,6 +1,7 @@
 /**
  * MilestoneToast — the quiet "{n} in a row" flame that pops at each streak of
- * consecutive correct answers within a session.
+ * consecutive correct answers within a session (every 5th). It never takes a
+ * touch, and a screen reader hears it once (a polite live region).
  */
 import React from 'react';
 import { Text, View } from 'react-native';
@@ -12,7 +13,10 @@ import { useColors } from '@/theme/ThemeContext';
 export function MilestoneToast({ n }: { n: number }) {
   const c = useColors();
   return (
-    <View style={{ position: 'absolute', top: 6, left: 0, right: 0, alignItems: 'center', zIndex: 5 }}>
+    <View
+      style={{ position: 'absolute', top: 6, left: 0, right: 0, alignItems: 'center', zIndex: 5, pointerEvents: 'none' }}
+      accessibilityLiveRegion="polite"
+    >
       <RiseIn kind="pop" duration={300}>
         <View
           style={{
@@ -26,9 +30,7 @@ export function MilestoneToast({ n }: { n: number }) {
           }}
         >
           <Ion name="flame" size={15} color={c.amber} />
-          <Text style={[font('sans', 800), { fontSize: 13.5, color: c.amberDeep }]}>
-            {n} in a row
-          </Text>
+          <Text style={[font('sans', 800), { fontSize: 13.5, color: c.amberDeep }]}>{n} in a row</Text>
         </View>
       </RiseIn>
     </View>

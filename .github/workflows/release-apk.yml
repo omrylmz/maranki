@@ -2,16 +2,31 @@ name: Release APK
 
 # Cut a release by pushing a version tag:
 #
-#     git tag v2.0.1
-#     git push origin v2.0.1
+#     git tag v3.1.0
+#     git push origin v3.1.0
 #
-# CI then runs the test suite, regenerates the native Android project
-# (Continuous Native Generation — `android/` is not committed), builds a
-# release APK, and publishes it to the repo's Releases page.
+# CI then runs the type check, lint and test suite ONCE, and builds the
+# generic app:
+#
+#     variant   APP_VARIANT   app              package                  APK
+#     generic   generic       Maranki          com.omrylmz.maranki      maranki-<tag>.apk
+#
+# The German variant is NOT built here. Its decks are private and are not in
+# this public repo, and an APK on the public Releases page would give them
+# away. Build it on your own computer (RELEASING.md "The German decks").
+#
+# CI regenerates the native Android project with APP_VARIANT (Continuous
+# Native Generation — `android/` is not committed; app.config.ts sets the
+# package id), checks that the bundle carries no starter deck, builds a
+# release APK, and keeps it as an artifact. Then a GitHub Release gets the APK.
 #
 # You can also trigger it manually from the Actions tab (workflow_dispatch).
 # A manual run with no tag just builds and uploads the APK as an artifact;
 # supply a tag to also publish a Release.
+#
+# Signing: read RELEASING.md "Signing keys" first. The signing step uses the
+# release keystore from secrets, or (no secret) the debug key of the prebuild
+# template.
 
 on:
   push:
@@ -20,7 +35,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to publish (e.g. v2.0.1). Leave blank to build without publishing a Release."
+        description: "Release tag to publish (e.g. v3.1.0). Leave blank to build without publishing a Release."
         required: false
         default: ""
 
@@ -34,9 +49,84 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build & publish Android APK
+  verify:
+    name: Types, lint and tests
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      name: ${{ steps.version.outputs.name }}
+      code: ${{ steps.version.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate the release on the same checks as CI (ci.yml) — types, lint and the
+      # test suite. Any red step stops the run: no green checks, no APK.
+      # A tag push does not run ci.yml, so this check runs here too.
+      - name: No deck file in the repo
+        run: bash scripts/check-no-deck-files.sh
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx expo lint
+
+      - name: Run tests
+        run: npx jest --ci
+
+      # Resolve the release identity WITHOUT interpolating untrusted context
+      # straight into the shell (values are passed via env, then read).
+      #   versionName -> the tag without its leading "v" (e.g. 3.1.0)
+      #   versionCode -> the workflow run number (strictly increasing, so
+      #                  Android always treats a new build as an upgrade).
+      - name: Derive version info
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            RAW_TAG="$REF_NAME"
+          else
+            RAW_TAG="$INPUT_TAG"
+          fi
+          if [ -z "$RAW_TAG" ]; then
+            RAW_TAG="v0.0.0-dev"
+          fi
+          {
+            echo "tag=$RAW_TAG"
+            echo "name=${RAW_TAG#v}"
+            echo "code=$RUN_NUMBER"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building $RAW_TAG (versionName=${RAW_TAG#v}, versionCode=$RUN_NUMBER)"
+
+  build:
+    name: Build Android APK (${{ matrix.variant }})
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only the generic app: see the top of this file.
+        variant: [generic]
+    # APP_VARIANT picks the app config (name, package id: app.config.ts) and
+    # the content pack Metro bundles (metro.config.js). It is set for the
+    # whole job, so `expo prebuild`, the bundle check and the Gradle build
+    # (which runs Metro to bundle the JS and the assets) all see it.
+    env:
+      APP_VARIANT: ${{ matrix.variant }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,44 +153,30 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          key: gradle-${{ runner.os }}-${{ matrix.variant }}-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
+            gradle-${{ runner.os }}-${{ matrix.variant }}-
             gradle-${{ runner.os }}-
 
       - name: Install dependencies
         run: npm ci
 
-      # Gate the release on the test suite — no green tests, no APK.
-      - name: Run tests
-        run: npm test -- --ci
-
-      # Resolve the release identity WITHOUT interpolating untrusted context
-      # straight into the shell (values are passed via env, then read).
-      #   versionName -> the tag without its leading "v" (e.g. 2.0.1)
-      #   versionCode -> the workflow run number (strictly increasing, so
-      #                  Android always treats a new build as an upgrade)
-      - name: Derive version info
-        id: version
-        env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-          INPUT_TAG: ${{ inputs.tag }}
-          RUN_NUMBER: ${{ github.run_number }}
+      # The generic app must never carry the German decks (spec §9.4: Metro
+      # bundles only the chosen pack's files). `expo export` writes every
+      # bundled asset into metadata.json, with its extension.
+      - name: Check the bundled starter decks
         run: |
-          if [ "$REF_TYPE" = "tag" ]; then
-            RAW_TAG="$REF_NAME"
-          else
-            RAW_TAG="$INPUT_TAG"
+          npx expo export -p android --output-dir "$RUNNER_TEMP/export"
+          COUNT=$(node -e "const m = require(process.argv[1]); console.log(m.fileMetadata.android.assets.filter((a) => a.ext === 'apkg').length)" "$RUNNER_TEMP/export/metadata.json")
+          case "$APP_VARIANT" in
+            generic) WANT=0 ;;
+            *) echo "Unknown variant $APP_VARIANT"; exit 1 ;;
+          esac
+          echo "$APP_VARIANT bundle: $COUNT .apkg files (expected $WANT)"
+          if [ "$COUNT" != "$WANT" ]; then
+            echo "::error::The $APP_VARIANT bundle has $COUNT .apkg files, expected $WANT."
+            exit 1
           fi
-          if [ -z "$RAW_TAG" ]; then
-            RAW_TAG="v0.0.0-dev"
-          fi
-          {
-            echo "tag=$RAW_TAG"
-            echo "name=${RAW_TAG#v}"
-            echo "code=$RUN_NUMBER"
-          } >> "$GITHUB_OUTPUT"
-          echo "Building $RAW_TAG (versionName=${RAW_TAG#v}, versionCode=$RUN_NUMBER)"
 
       - name: Prebuild Android project
         run: npx expo prebuild -p android --no-install
@@ -108,7 +184,8 @@ jobs:
       # Optional: decode a release keystore from secrets. If it isn't set up
       # yet, the build falls back to Expo's debug signing — the APK still
       # installs by sideload, it just isn't signed with your own key.
-      # Add real signing later with scripts/setup-release-keystore.sh.
+      # Add real signing later with scripts/setup-release-keystore.sh — but
+      # only as RELEASING.md "Signing keys" allows.
       - name: Decode release keystore (if configured)
         id: keystore
         env:
@@ -137,8 +214,8 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          VERSION_NAME: ${{ steps.version.outputs.name }}
-          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ needs.verify.outputs.name }}
+          VERSION_CODE: ${{ needs.verify.outputs.code }}
         run: |
           ARGS=(
             "assembleRelease"
@@ -159,10 +236,13 @@ jobs:
       - name: Name the APK
         id: apk
         env:
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.verify.outputs.tag }}
         run: |
           SRC="android/app/build/outputs/apk/release/app-release.apk"
-          DEST="maranki-${TAG}.apk"
+          case "$APP_VARIANT" in
+            generic) DEST="maranki-${TAG}.apk" ;;
+            *) echo "Unknown variant $APP_VARIANT"; exit 1 ;;
+          esac
           cp "$SRC" "$DEST"
           echo "path=$DEST" >> "$GITHUB_OUTPUT"
           ls -lh "$DEST"
@@ -171,17 +251,31 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: maranki-apk
+          name: apk-${{ matrix.variant }}
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
 
+  publish:
+    name: Publish GitHub Release
+    needs: [verify, build]
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the APK
+        uses: actions/download-artifact@v4
+        with:
+          pattern: apk-*
+          merge-multiple: true
+          path: apks
+
       - name: Publish GitHub Release
-        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          APK: ${{ steps.apk.outputs.path }}
+          TAG: ${{ needs.verify.outputs.tag }}
         run: |
-          gh release create "$TAG" "$APK" \
+          ls -lh apks
+          gh release create "$TAG" \
+            "apks/maranki-${TAG}.apk" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "Maranki $TAG" \
             --generate-notes

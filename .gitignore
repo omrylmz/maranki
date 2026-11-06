@@ -1,7 +1,7 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# dependencies
-node_modules/
+# dependencies (no trailing slash: also ignores a symlinked node_modules)
+node_modules
 
 # Expo
 .expo/
@@ -46,3 +46,22 @@ example
 
 # IDE
 .idea/
+
+# local test APKs for emulator upgrade checks (large, never commit)
+.test-apks/
+
+# Anki decks are private: this repo is public, so a deck must never get in.
+# (The German build reads them from assets/packs/german/ on your own computer.)
+*.apkg
+*.[aA][pP][kK][gG]
+*.colpkg
+*.anki2
+*.anki21
+*.anki21b
+# An .apkg file is a zip file with another name.
+*.[zZ][iI][pP]
+# An app file can hold the decks too.
+*.[aA][pP][kK]
+*.[aA][aA][bB]
+# The real fixture samples (RELEASING.md "Test fixtures").
+.private-fixtures
