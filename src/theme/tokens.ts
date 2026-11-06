@@ -3,6 +3,24 @@
  * Source of truth: design/colors_and_type.css (light ":root" + evening "[data-theme=dark]").
  * Every hex below is copied verbatim from that file; do not tweak values here
  * without updating the design system.
+ *
+ * Text contrast (WCAG AA, spec §8.12; uiContrast.test.ts checks it in both
+ * themes): every TEXT colour reads at least 4.5:1 on the surface it is drawn
+ * on. Final review 2026-11 changed four values for it (and the CSS with them):
+ *   - Paper ink3 #8B8478 → #6C665B (3.26:1 on paper; now 5.0:1, 4.6:1 on paperSunk);
+ *   - Evening ink3 #8E8676 → #978F7F (4.21:1 on a card; now 4.7:1);
+ *   - Evening inkOnColor #FBF8F2 → #1C1916: dark ink on the bright Evening
+ *     pine (white was 2.93:1 on "Study {n}"; now 5.6:1);
+ *   - inkOnAmber / inkOnDanger (new): the text on an amber or a red fill
+ *     (white was 2.7:1 / 2.3:1 on amber, 3.6:1 on the Evening red).
+ *
+ * `imageWell` (wave 5g, app-only: not in the CSS file yet) is the colour
+ * behind a card's picture. It is LIGHT in both themes. WHY (final device
+ * pass, Evening): many imported pictures are drawings with black lines on a
+ * transparent background. On the dark Evening well (paperSunk #151310)
+ * black lines read at 1.1:1, so they could not be seen. Paper keeps its
+ * well (= paperSunk, nothing changes there); Evening uses Paper's page
+ * colour #E7E0D2, a light warm paper (black on it: 16:1).
  */
 import { Platform, TextStyle, ViewStyle } from 'react-native';
 
@@ -23,10 +41,21 @@ export interface Palette {
   ink: string;
   ink2: string;
   ink3: string;
+  /** Text on a pine fill (the primary button). */
   inkOnColor: string;
+  /** Text on an amber fill (the reward button, the Today tab badge). */
+  inkOnAmber: string;
+  /** Text on a red fill (the dangerSolid button). */
+  inkOnDanger: string;
   hairline: string;
   hairlineStrong: string;
   hairlineSoft: string;
+  /**
+   * The well behind a card's picture (StudyCard, its full-screen view,
+   * CardSheet). Light in BOTH themes, so black line art on a transparent
+   * picture stays readable (see the file comment).
+   */
+  imageWell: string;
   /* cross-theme semantic surfaces */
   pageBg: string;
   tabbarBg: string;
@@ -110,11 +139,14 @@ export const light: Palette = {
   cardHover: '#FCFAF4',
   ink: '#211E1A',
   ink2: '#5B554B',
-  ink3: '#8B8478',
+  ink3: '#6C665B',
   inkOnColor: '#FBF8F2',
+  inkOnAmber: '#211E1A',
+  inkOnDanger: '#FFFFFF',
   hairline: '#E4DDCD',
   hairlineStrong: '#D6CCB6',
   hairlineSoft: '#EFEADF',
+  imageWell: '#ECE6D9',
   pageBg: '#E7E0D2',
   tabbarBg: 'rgba(251, 248, 242, 0.92)',
   inverseSurface: '#211E1A',
@@ -135,12 +167,12 @@ export const light: Palette = {
   successTint: '#DFEFE8',
   warning: '#C77E22',
   warningTint: '#F8EBD4',
-  danger: '#BF4536',
+  danger: '#AE3A2C',
   dangerTint: '#F6E1DC',
   info: '#2D77B0',
   infoTint: '#DEEAF3',
   rate: {
-    again: { fg: '#BF4536', tint: '#F6E1DC' },
+    again: { fg: '#AE3A2C', tint: '#F6E1DC' },
     hard: { fg: '#C77E22', tint: '#F8EBD4' },
     good: { fg: '#2E8B6F', tint: '#DFEFE8' },
     easy: { fg: '#2D77B0', tint: '#DEEAF3' },
@@ -150,7 +182,7 @@ export const light: Palette = {
     learning: { fg: '#DD8A2B', tint: '#FAECD6' },
     review: { fg: '#6A6CC0', tint: '#E6E5F4' },
     mastered: { fg: '#136F63', tint: '#E2EDE9' },
-    due: { fg: '#BF4536', tint: '#F6E1DC' },
+    due: { fg: '#AE3A2C', tint: '#F6E1DC' },
   },
   cefr: {
     A1: { fg: '#4A9D7F', tint: '#E2EFE9' },
@@ -177,11 +209,14 @@ export const dark: Palette = {
   cardHover: '#322C24',
   ink: '#F1EADD',
   ink2: '#C2B9A7',
-  ink3: '#8E8676',
-  inkOnColor: '#FBF8F2',
+  ink3: '#978F7F',
+  inkOnColor: '#1C1916',
+  inkOnAmber: '#1C1916',
+  inkOnDanger: '#1C1916',
   hairline: '#38322A',
   hairlineStrong: '#4A4338',
   hairlineSoft: '#2F2A22',
+  imageWell: '#E7E0D2',
   pageBg: '#100E0B',
   tabbarBg: 'rgba(35, 32, 25, 0.9)',
   inverseSurface: '#F1EADD',
@@ -202,12 +237,12 @@ export const dark: Palette = {
   successTint: '#17322A',
   warning: '#DC9A4C',
   warningTint: '#372A16',
-  danger: '#D9614E',
+  danger: '#E8735F',
   dangerTint: '#3A211C',
   info: '#4F95C9',
   infoTint: '#15293A',
   rate: {
-    again: { fg: '#D9614E', tint: '#3A211C' },
+    again: { fg: '#E8735F', tint: '#3A211C' },
     hard: { fg: '#DC9A4C', tint: '#372A16' },
     good: { fg: '#46B093', tint: '#17322A' },
     easy: { fg: '#4F95C9', tint: '#15293A' },
@@ -217,7 +252,7 @@ export const dark: Palette = {
     learning: { fg: '#E89A3C', tint: '#3A2C16' },
     review: { fg: '#8A8CD6', tint: '#232148' },
     mastered: { fg: '#2BA391', tint: '#16332D' },
-    due: { fg: '#D9614E', tint: '#3A211C' },
+    due: { fg: '#E8735F', tint: '#3A211C' },
   },
   cefr: {
     A1: { fg: '#5FB496', tint: '#163029' },

@@ -1,0 +1,62 @@
+name: CI
+
+# The quality gate. Every pull request and every push to a branch runs the same
+# four checks as `npm run verify`:
+#
+#   1. scripts/check-no-deck-files.sh — git tracks no deck or app file
+#   2. npx tsc --noEmit   — the TypeScript types are correct
+#   3. npx expo lint      — ESLint, incl. the React Compiler / react-hooks rules
+#   4. npx jest --ci      — the whole test suite (--ci: a missing snapshot fails
+#                           instead of being written)
+#
+# A red run means "do not merge". Release builds (release-apk.yml) run the same
+# checks before they build an APK.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+
+# Only the newest run of a branch / pull request matters: cancel older ones.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only token: CI never writes to the repo.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Types, lint and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # This repo is public and the Anki decks are private: see RELEASING.md,
+      # "The German decks". A deck in git must stop the run at once.
+      - name: No deck file in the repo
+        run: bash scripts/check-no-deck-files.sh
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` installs exactly what package-lock.json says (and fails if the
+      # lock file is out of date), so CI tests the same packages as the release.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx expo lint
+
+      - name: Tests
+        run: npx jest --ci

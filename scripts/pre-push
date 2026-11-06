@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Stops a push when a commit that public main does not have holds a deck or app
+# file. A push sends every such commit, so a later `git rm` does not help.
+#
+# It reads file names only, so it cannot see real text inside a .json file.
+#
+# Install once (all worktrees and all branches share this folder). Use install,
+# not cp: git ignores a hook file that is not executable.
+#   install -m 755 scripts/pre-push "$(git rev-parse --git-common-dir)/hooks/pre-push"
+#
+# This file must stand alone: a local branch with the decks may not have scripts/.
+set -uo pipefail
+BASE=refs/remotes/origin/main
+RE='\.(apkg|colpkg|anki2|anki21|anki21b|apk|aab|zip)$|(^|/)\.private-fixtures/'
+
+if ! git rev-parse --quiet --verify "$BASE^{commit}" > /dev/null; then
+  echo "pre-push: origin/main is missing, so the check cannot run. Run: git fetch origin" >&2
+  exit 1
+fi
+
+STATUS=0
+while read -r _ SHA _ _; do
+  case "$SHA" in *[!0]*) ;; *) continue ;; esac # All zeros: a delete sends no file.
+  # A tag can point at a file or a folder, and git log skips those with no error.
+  if ! git rev-parse --quiet --verify "$SHA^{commit}" > /dev/null; then
+    echo "pre-push: $SHA is not a commit, so the check cannot read it." >&2
+    exit 1
+  fi
+  # -m: also read merge commits. --no-renames: keep the old name. -z: keep odd names.
+  # The -c settings stop two user settings from hiding a merge or a first commit.
+  if ! NAMES="$(git -c log.showroot=true -c log.diffMerges=separate log -m --format= --name-only --no-renames -z "$BASE..$SHA" | tr '\0' '\n')"; then
+    echo "pre-push: cannot read the history of $SHA." >&2
+    exit 1
+  fi
+  FOUND="$(printf '%s\n' "$NAMES" | grep -iE "$RE" | sort -u)"
+  if [ -n "$FOUND" ]; then
+    echo "STOP: this push would send a deck or app file, even if a later commit removed it:" >&2
+    echo "$FOUND" >&2
+    STATUS=1
+  fi
+done
+exit "$STATUS"

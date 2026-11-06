@@ -15,10 +15,11 @@
 # Requires: keytool (ships with any JDK), openssl, and an authenticated
 # GitHub CLI (`gh auth login`).
 #
-# Skipping this is fine to start with — without these secrets the workflow
-# falls back to Expo's debug signing and the APK still sideloads. But then
-# each build may not upgrade cleanly, so set this up before your first real
-# public release.
+# STOP: read "Signing keys" in RELEASING.md first. The public v2.0.2 APK is
+# debug-signed, so a new key makes Android refuse the update, and learners can
+# only reinstall, which deletes their data. Without these secrets the workflow
+# uses the debug key, and that is what a release must use until those rules allow
+# a change.
 
 set -euo pipefail
 
@@ -75,7 +76,5 @@ cat <<EOF
    ship an update that installs over the current app — every user would have
    to uninstall and reinstall.
 
-Next: push a tag to cut a signed release, e.g.
-
-     git tag v2.0.1 && git push origin v2.0.1
+Next: read "Signing keys" and "Cut a release" in RELEASING.md before you tag.
 EOF

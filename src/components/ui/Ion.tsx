@@ -15,6 +15,22 @@ interface IonProps {
   style?: StyleProp<TextStyle>;
 }
 
+/**
+ * An icon is decoration: the glyph is a private-use character, so a screen
+ * reader must never read it. Hidden from TalkBack (importantForAccessibility
+ * "no": React Native then leaves it out of a row's composed label too) and
+ * from VoiceOver. A control's meaning comes from its own `label`.
+ */
 export function Ion({ name, size = 22, color, style }: IonProps) {
-  return <Ionicons name={name as IonName} size={size} color={color} style={style} />;
+  return (
+    <Ionicons
+      name={name as IonName}
+      size={size}
+      color={color}
+      style={style}
+      accessible={false}
+      importantForAccessibility="no"
+      accessibilityElementsHidden
+    />
+  );
 }

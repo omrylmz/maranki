@@ -8,6 +8,9 @@
       ],
       "@/assets/*": [
         "./assets/*"
+      ],
+      "@variant/pack": [
+        "./src/variants/generic/pack.ts"
       ]
     }
   },

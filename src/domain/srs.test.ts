@@ -20,9 +20,10 @@ const NOW = 1_700_000_000_000;
 function mk(partial: Partial<Card> = {}): Card {
   return {
     id: 'c1',
+    noteId: 'n1',
     deckId: 'd1',
-    front: 'front',
-    back: 'back',
+    ord: 0,
+    newPos: NOW,
     ease: DEFAULT_SRS.startingEase,
     intervalDays: 0,
     stepIndex: null,
